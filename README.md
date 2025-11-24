@@ -1,5 +1,6 @@
 # audio-music-transcript
 Machine Learning for Vision and Multimedia Group Project
+Github collaboration tutorial : https://gist.github.com/Alinaprotsyuk/3d58f8cd52eb03a11283d64beb0e083e
 
 # Objective
 Design and implement a deep learning system capable of automatically transcribing monophonic (one note at a time) or polyphonic (multiple notes sounding
