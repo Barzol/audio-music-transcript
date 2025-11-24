@@ -1,0 +1,1 @@
+# Qui viene generata l'architettura della rete

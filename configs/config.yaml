@@ -1,0 +1,15 @@
+# si puoò usare questo file di configurazione per definire
+# le variabili più utilizzate
+# questi sono valori di esempio
+
+training:
+  batch_size: 64
+  learning_rate: 0.001
+  epochs: 50
+  device: "cuda"
+
+model :
+  input_size: 100
+  output_size: 50
+
+  
