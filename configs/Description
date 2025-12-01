@@ -1,0 +1,14 @@
+Ho creato due file python: 
+
+Il primo chiamato Sorter.py "Chiamato così perchè mi piaceva ahahah" va a generare un nuovo file csv partendo dall'originale.
+Seleziona solo quelli con codice Solo Piano.
+
+Il secondo chiamato Dataset_creator.py che in questo momento partendo dall'archivio dei midis genera un nuovo archivio
+per i midis con codice Solo Piano, ovviamente questo può essere adattato alla creazione dell'archivio per gli audio, ma io non ho
+ancora avuto tempo di farlo.
+
+In questo momento sono dei codici che devono essere runnati in singolo ma in futuro potremmo automatizzarlo runnando un solo codice.
+
+Tutti e due i file dovrebbero essere commentati in maniera da essere molto comprensibili.
+
+Con _sp indico -> Solo Piano.
