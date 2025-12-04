@@ -9,29 +9,36 @@ import os
 # Percorsi che ho utilizzato per importare gli archivi
 # Possono essere incapsulati dentro un file di config per renderlo portabile
 
-# Percorso del file CSV_SP
+# Percorso CSV_SP
 metadata_csv = "Dataset_sp/musicnet_metadata_sp.csv"
-# Percorso dell'archivio originale
+
+# Archivio completo
 source_path = Path("musicnet.tar.gz")
-# Archivio destinazione   
+
+# Archivio SP
 dest_tar = "musicnet_sp.tar.gz"
-# Questo va a creare le cartelle splittando tra testing and training
+
+# mantiene lo split del dataset originale
 include_splits = ("train", "test")
 
-# Funzione per caricare tutti gli id dei file Solo Piano dal file CSV creato 
+# Carico i wav Solo Piano utilizzando il CSV
 def load_ids(csv_path):
-    # Creo l'iterabile
+
+    # Leggo il CSV e lo metto in csv_path
     df = pd.read_csv(csv_path, encoding="latin1")
-    # Controllo per verificare che effettivamente l'id sia dentro il CSV
+
+    # Controllo l'id, se id non valido lancio eccezzione
     if "id" not in df.columns:
         # Lancia un'eccezzione
         raise ValueError("CSV senza colonna 'id'")
-    # Altrimenti ritorna un set con l'id dentro 
+    
+    # Se giusto restiusco un set di id 
     return set(str(x).strip() for x in df["id"].tolist())
 
 # Funzione che Serve quando non hai un file sul disco da copiare, 
 # ma già hai i suoi contenuti in memoria
 def add_bytes_to_tar(tar_obj, arcname, data, src_member=None):
+
     # Crea un TarInfo per descrivere il file con arcname nome/path che il file avrà dentro il tar 
     # (es. "musicnet/train_data/2104.wav").
     # TarInfo() contiene tutte le informazioni sul file: nome, permessi, proprietario, data modifica, dimensione…
@@ -39,8 +46,10 @@ def add_bytes_to_tar(tar_obj, arcname, data, src_member=None):
 
     # Il tar deve sapere quanto “pesa” il file prima di scriverlo.
     info.size = len(data)
+
     # copia alcuni metadati se disponibili
     # src_member contiene i metadati dell'altro archivio poichè già esistente
+    
     if src_member is not None:
         # Itero sugli attributi per ottenere i metadati
         for attr in ("mtime", "mode", "uid", "gid", "uname", "gname"):
