@@ -8,60 +8,95 @@
 # di come vengono letti i file CSV, le immagini o i file audio
 
 import torch
-import pandas as pd
-from torch.utils.data import Dataset
 import torchaudio
-from pathlib import Path
+import pandas as pd
 import numpy as np
+import random
+from torch.utils.data import Dataset
+from pathlib import Path
 
 class MusicNetPianoDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=None):
-        """
-        csv_file : percorso al CSV filtrato Solo Piano
-        root_dir : cartella root che contiene train_data, test_data, train_labels, test_labels
-        transform : eventuali trasformazioni da applicare all'audio
-        """
-        self.data = pd.read_csv(csv_file)
-        self.root_dir = Path(root_dir)
-        self.transform = transform
+    def __init__(self, 
+                 csv_file = "data/solo_piano.csv", 
+                 data_dir="data/raw", 
+                 split='train', 
+                 chunk_duration=5.0, 
+                 sample_rate=22050
+                 ):
+        # Reads the .csv and filters only for 'train' and 'test'
+        df = pd.read_csv(csv_file)
+        self.data = df[df['split'] == split].reset_index(drop=True)
+
+        self.data_dir = Path(data_dir)
+        self.sample_rate = sample_rate
+        self.chunk_samples = int(chunk_duration * sample_rate)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # Ottieni la riga corrispondente
         row = self.data.iloc[idx]
+        track_id = str[row['id']]
 
-        # Costruisci i path assoluti
-        wav_path = self.root_dir / row['wav_path']
-        label_path = self.root_dir / row['label_path']
-        midi_path = self.root_dir / row['midi_path']  # se vuoi caricare midi
+        wav_path = self.data_dir / "wav" / f"{track_id}.wav"
+        label_path = self.data_dir / "labels" / f"{track_id}.npy"
 
-        # Carica l'audio
-        waveform, sr = torchaudio.load(wav_path)
+        # obtains audio info
+        info = torchaudio.info(wav_path)
+        total_samples = info.num_frames
+        orig_sr = info.sample_rate
 
-        # Carica le label
-        labels = np.load(label_path)
+        # choose a random point for extracting 5 seconds
+        if total_samples > self.chunk_samples:
+            start_frame = random.randint(0, total_samples - self.chunk_samples)
+        else:
+            start_frame = 0
 
-        # Applica eventuali trasformazioni sull'audio
-        if self.transform:
-            waveform = self.transform(waveform)
+        # load the 5 second frame
+        waveform, sr = torchaudio.load(wav_path, frame_offset=start_frame, num_frames=self.chunk_samples)
 
-        # Puoi decidere come restituire i dati
+        # Mono conversion
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+
+        # if the sampling rate changes, this re-samples at 22.05 kHz
+        if sr != self.sample_rate:
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
+            waveform = resampler(waveform)
+
+        # load labels
+        # for the labels we need to synchronize the label to the 5 second interval that we have extraced
+        # Because if I extract a 5 second segment, I must load the label( sheet music ) of these 5 seconds
+        hop_length = 512
+        start_cqt_frame = start_frame // hop_length
+        num_cqt_frames = self.chunk_samples // hop_length
+        
+        labels = np.load(label_path) 
+
+        chunk_labels = labels[
+            start_cqt_frame : start_cqt_frame + num_cqt_frames, :
+        ]
+        chunk_labels = torch.tensor(chunk_labels, dtype=torch.float32)
+
         return {
-            "waveform": waveform,   # Tensor (canali x samples)
-            "sample_rate": sr,
-            "labels": torch.tensor(labels, dtype=torch.float32),
-            "id": row['id']
+            "waveform": waveform,
+            "labels": labels, 
+            "id": track_id
         }
 
-import kagglehub
-path = kagglehub.dataset_download("imsparsh/musicnet-dataset")
+'''
 
-dataset = Dataset(
-    csv_path="music_metadata_sp.csv",
-    root_dir=f"{path}"
-)
+# --- TEST ----
+if __name__ == "__main__":
+    #
+    # test dataset on a block
+    # insert here
 
-print(len(dataset))
-audio_sample = dataset[0]["audio"]
+    dataset = MusicNetPianoDataset(split="train")
+    print(f"Tracce di training trovate: {len(dataset)}")
+    
+    if len(dataset) > 0:
+        sample = dataset[0]
+        print(f"Shape dell'audio: {sample['waveform'].shape}") 
+
+'''

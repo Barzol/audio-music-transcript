@@ -214,3 +214,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# =========================
+# Custom Project Additions
+# =========================
+
+# Datasets and Audio Files
+data/
+*.wav
+*.mid
+*.midi
+*.mp3
+*.flac
+
+
+# Credentials
+kaggle.json
