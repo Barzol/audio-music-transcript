@@ -26,7 +26,7 @@ def main():
         # makes intermidieate folders ?
         (raw_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    print("Copyng files 'Solo Piano' in data/raw/ ...")
+    print("Copyng {len(df)} files 'Solo Piano' in data/raw/ ...")
     
     # For each row of the csv table :
     # - Takes the track id
@@ -35,15 +35,30 @@ def main():
     # - Copies the file .npy in data/raw/labels/
     for _, row in df.iterrows():
         track_id = str(row["id"])
-        
-        # Copy WAV
-        shutil.copy(row["wav_path"], raw_dir / "wav" / f"{track_id}.wav")
-        # Copy MIDI
-        shutil.copy(row["midi_path"], raw_dir / "midi" / f"{track_id}.mid")
-        # Copy Labels
-        shutil.copy(row["label_path"], raw_dir / "labels" / f"{track_id}.npy")
 
-    print(f"Copied {len(df)} set of files in data/raw/")
+        # COPY MIDI
+        # retrieve the path from csv
+        src_midi = row["midi_path"]
+        if os.path.exists(src_midi):
+            shutil.copy(src_midi, raw_dir / "midi" / f"{track_id}.mid")
+        else:
+            print(f"Warning: MIDI not found for {track_id} at {src_midi}")
+
+        # COPY WAV
+        src_wav = row["wav_path"]
+        if os.path.exists(src_wav):
+            shutil.copy(src_wav, raw_dir / "wav" / f"{track_id}.wav")
+        else:
+            print(f"Warning: WAV not found for {track_id}")
+        
+        # COPY LABELS
+        src_label = row["label_path"]
+        if os.path.exists(src_label):
+            shutil.copy(src_label, raw_dir / "labels" /"labels" f"{track_id}.csv")
+        else:
+            print(f"Warning: Label not found for {track_id}")
+
+    print(f"Process completed. Check {raw_dir} for files")
 
 # This prevents the script to be executed in a wrong way
 # Apparently it is a best practice in Python to insert this check

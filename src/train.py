@@ -57,7 +57,7 @@ def train():
 
             epoch_loss += loss.item()
         
-        printf(f"Epoc {epoch+1}/{epochs} - Loss : {epoch_loss/len(train_loader):.4f}")
+        print(f"Epoc {epoch+1}/{epochs} - Loss : {epoch_loss/len(train_loader):.4f}")
 
     save_checkpoint({
         'state_dict' : model.state_dict(),

@@ -220,14 +220,20 @@ __marimo__/
 # Custom Project Additions
 # =========================
 
-# Datasets and Audio Files
-data/
+# Kaggle
+.cache/
+kaggle.json
+
+# Dataset Folder
+data/**
+
+# Audio and music files
 *.wav
-*.mid
-*.midi
 *.mp3
 *.flac
+*.mid
+*.midi
 
-
-# Credentials
-kaggle.json
+# labels
+*.npy
+data/**/*.csv

@@ -11,7 +11,7 @@ class PianoTranscriptArchitecture(nn.Module):
             hidden_size = 128,
             lstm_layers = 1,
             dropout = 0.3
-            )
+            ):
         super(PianoTranscriptArchitecture, self).__init__()
 
         # ----- CNN MODULE -----
