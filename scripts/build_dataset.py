@@ -26,7 +26,7 @@ def main():
         # makes intermidieate folders ?
         (raw_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    print("Copyng {len(df)} files 'Solo Piano' in data/raw/ ...")
+    print(f"Coping {len(df)} files 'Solo Piano' in data/raw/ ...")
     
     # For each row of the csv table :
     # - Takes the track id
