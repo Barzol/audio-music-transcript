@@ -1,15 +1,27 @@
-# si puoò usare questo file di configurazione per definire
-# le variabili più utilizzate
-# questi sono valori di esempio
+# config.yaml
+# hyperparameters for MusicNet
+# balance quality and training (1-3h)
 
-training:
-  batch_size: 64
-  learning_rate: 0.001
-  epochs: 50
-  device: "cuda"
+dataset:
+  csv_file: "data/solo_piano.csv"
+  data_dir: "data/raw"
+  chunk_duration: 5.0
+  sample_rate: 22050
 
 model :
-  input_size: 100
-  output_size: 50
+  input_features: 84
+  hidden_size: 256
+  lstm_layers: 2
+  dropout: 0.3
 
-  
+training:
+  batch_size: 16
+  epochs: 50
+  learning_rate: 0.0005
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  checkpoint_path: "best.model.pt"
+
+evaluation:
+  threshold: 0.5
+

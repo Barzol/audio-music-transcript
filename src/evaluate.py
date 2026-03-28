@@ -13,10 +13,12 @@ def evaluate():
     device = get_device()
     print(f"Metrics on :{device}")
 
+    # -------- Dataset and Dataloader ----------
     # load test dataset
     test_dataset = MusicNetPianoDataset(split="test")
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
+    # -------- Model ---------------------------
     # initialize and load the trained model
     model = PianoTranscriptArchitecture().to(device)
     # load the weights computed after the train
@@ -29,6 +31,7 @@ def evaluate():
     all_preds = []
     all_labels = []
 
+    # -------- Evalutaion loop -----------------
     # disable the gradient computation for speed
     with torch.no_grad():
         for batch in test_loader:
@@ -55,8 +58,10 @@ def evaluate():
 
             # move the tensors on the CPU and convert them in array
             # flats the dimensions (batch*frames, 84) for calculate the metrics
-            all_preds.append(preds.cpu().numpy().reshape(-1,84))
-            all_labels.append(labels.cpu().numpy().reshape(-1, 84))
+            n_notes = preds.shape[-1]
+            
+            all_preds.append(preds.cpu().numpy().reshape(-1,n_notes))
+            all_labels.append(labels.cpu().numpy().reshape(-1, n_notes))
 
     # concatenate the results
     all_preds = np.vstack(all_preds)
@@ -64,10 +69,12 @@ def evaluate():
 
     # metrics
     # average='micro' metrics calculated globally on all the frames
-    precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='micro')
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        all_labels, all_preds, average='micro', zero_division=0
+    )
 
     # accuracy : number of true predictions
-    accuracy = accuracy_score(all_labels, all_preds)
+    accuracy = (all_labels == all_preds).mean()
 
     # prints
     print('\n--- Results of Frame-Level Evaluation ---')

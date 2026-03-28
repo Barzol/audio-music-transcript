@@ -1,48 +1,101 @@
+# this file contains the main training loop 
+# it loads the dataset, initializes the model, and trains it
+# for a number of epochs
+
 import torch
 import torch.nn as nn
 import torch.optim as optim 
 from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, set_seed, save_checkpoint
+from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config
 
 def train():
+
+    # load hyperparameters from the config file
+    config = load_config("configs/config.yaml")
+
+    # set random seed
     set_seed(42)
-    device = get_device
-    print("Training on : {device}")
 
-    # Dataset and Dataloader with Batch Size 8
-    train_dataset = MusicNetPianoDataset(split='train')
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+    device = get_device()
+    print(f"Training on : {device}")
 
+    # -------- Dataset and Dataloader --------
+    train_dataset = MusicNetPianoDataset(
+        csv_file = config['dataset']['csv_file'],
+        data_dir = config['dataset']['data_dir'],
+        split='train',
+        chunk_duration = config['dataset']['chunk_duration'],
+        sample_rate = config['dataset']['sample_rate']
+    )
+
+    # shuffle=True : randomized the order of tracks
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size = config['training']['batch_size'], 
+        shuffle = True
+    )
+
+    # -------- Model -------------------------
     # CRNN model initialize
-    model = PianoTranscriptArchitecture().to(device)
+    model = PianoTranscriptArchitecture(
+        input_features = config['model']['input_features'],
+        hidden_size = config['model']['hidden_size'],
+        lstm_layers = config['model']['lstm_layers'],
+        dropout = config['model']['dropout']
+    ).to(device)
 
+    # -------- Loss --------------------------
     # Loss : Binary Cross Entropy for multi-label classification
-    # BCEWithLogitsLoss because the final sigmoid will be applied in post processing
+    # BCEWithLogitsLoss because the final sigmoid will be applied 
+    # in post processing
     criterion = nn.BCEWithLogitsLoss()
 
+    # -------- Optimizer ---------------------
     # optimizer Adam with learning rate 0.001
-    optimizer = optim.Adam(model.parameters(), lr = 0.001)
+    optimizer = optim.Adam(
+        model.parameters(), 
+        lr = config['training']['learning_rate']
+    )
 
-    epochs = 10
+    # reduces LR by 0.5 if loss doesnt' primove for 5 epochs
+    # this helps escape plateaus 
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode = 'min',
+        patience = config['training']['scheduler_patience'],
+        factor = config['training']['scheduler_factor']
+    )
 
+    epochs = config['training']['epochs']
+    best_loss = float('inf')
+
+    # training mode 
     model.train()
 
+    # -------- Training loop -----------------
     for epoch in range(epochs):
         epoch_loss = 0.0
 
         for batch in train_loader :
+
+            # moves waveform and labels to target device
             waveforms = batch["waveform"]
             labels = batch["labels"].to(device)
 
             # extracting CQT features for batch
+            # features will be 2D tensor (time_frames, freq_bins)
             cqt_list = [extract_cqt(wave) for wave in waveforms]
+
+            # stack into a single batch tensor
             inputs = torch.stack(cqt_list).to(device)
 
+            # reset gradients
             optimizer.zero_grad()
 
             # forward pass : active notes per frames
+            # output : (batch, time_frames, 84)
             outputs = model(inputs)
 
             # Align the temporal dimensions
@@ -55,10 +108,28 @@ def train():
             loss.backward()
             optimizer.step()
 
+            # loss per epoch
             epoch_loss += loss.item()
         
-        print(f"Epoc {epoch+1}/{epochs} - Loss : {epoch_loss/len(train_loader):.4f}")
+        avg_loss = epoch_loss/len(train_loader)
 
+        scheduler.step(avg_loss)
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            save_checkpoint({
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'epoch': epoch + 1,
+                'loss' : best_loss
+            }, filename = config['training']['checkpoint_path'])
+            
+            print(f"New best model saved (loss: {best_loss:.4f})")
+
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"Epoch {epoch+1}/{epochs} - Loss : {avg_loss:.4f}")
+
+    # saves model weights and optimizer state so training can be resumed
     save_checkpoint({
         'state_dict' : model.state_dict(),
         'optimizer' : optimizer.state_dict()

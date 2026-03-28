@@ -1,4 +1,12 @@
-# Architecture 
+# This file defines the model class PianoTranscriptArchitecture
+# defines the nn architecture
+# the model receives a CQT spectogram and outputs per-frame
+# note probabilities.
+
+# Architecture :
+#   CNN     : extracts frequency patterns from CQT
+#   BiLSTM  : captures note onsets and offsets
+#   Linear  : maps to 84 probabilities ( note probabilities )
 
 import torch
 import torch.nn as nn
@@ -7,11 +15,13 @@ class PianoTranscriptArchitecture(nn.Module):
 
     def __init__(
             self,
-            input_features = 84,
-            hidden_size = 128,
-            lstm_layers = 1,
-            dropout = 0.3
+            input_features = 84,    # CQT frequency bins
+            hidden_size = 128,      # size of LSTM ( output will be *2 because is Bidirectional)
+            lstm_layers = 1,        
+            dropout = 0.3           # dropout probability
             ):
+        
+
         super(PianoTranscriptArchitecture, self).__init__()
 
         # ----- CNN MODULE -----
@@ -21,7 +31,7 @@ class PianoTranscriptArchitecture(nn.Module):
         self.cnn = nn.Sequential(
             # first convolutional block
             nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3,3), padding=(1,1)),
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(32), # normalizes activations
             nn.ReLU(),
             # halves the dimension of the frequencies ( 84 -> 42 )
             nn.MaxPool2d(kernel_size=(1,2)),
@@ -40,6 +50,7 @@ class PianoTranscriptArchitecture(nn.Module):
         cnn_out_freq = input_features // 4
         cnn_out_features = 64 * cnn_out_freq
 
+
         # ----- BIDIRECTIONAL LSTM MODULE -----
         # BiLSTM for the duration of notes in the frames
         # watches past and future for learn when a note starts and stops
@@ -51,13 +62,21 @@ class PianoTranscriptArchitecture(nn.Module):
             bidirectional=True
         )
 
+
         # ----- FINAL CLASSIFICATION ----- 
         # the problem is a multi-label classification so for each frame the model produces 84 probabilities
         # Fully connected layer for 84 probabilities
         # hidden_size * 2 because it's bidirectional
         self.fc = nn.Linear(hidden_size * 2, 84)
 
+
     def forward(self,x):
+        '''
+        x : FloatTensor of shape (batch, time_frames, 84)
+
+        returns logits : FloatTensor of shape (batch, time_frames, 84)
+        '''
+
         # x enters with shape : (Batch, Frame, 84)
         # we add the channel dimension
         # input shape : (Batch, 1, Frame, 84)
@@ -87,15 +106,31 @@ class PianoTranscriptArchitecture(nn.Module):
 
         return logits
 
-'''
+
 
 # --- TEST DEL MODELLO ---
 if __name__ == "__main__":
     # Test veloce per verificare le dimensioni dei tensori
-    model = PianoTranscriptionModel()
+    model = PianoTranscriptArchitecture()
     dummy_input = torch.randn(8, 215, 84) # Batch da 8 campioni [cite: 36], 215 frame, 84 bin CQT [cite: 31]
     output = model(dummy_input)
     print(f"Shape di input: {dummy_input.shape}")
     print(f"Shape di output: {output.shape}") # Dovrebbe essere [8, 215, 84]
+
+'''
+A tiny scheme
+
+(8, 215, 84)          input CQT
+    ↓ unsqueeze
+(8, 1, 215, 84)       add channel dimension
+    ↓ CNN
+(8, 64, 215, 21)      extracted features with frequencies halved 2 times
+    ↓ permute + view
+(8, 215, 1344)        flatten for LSTM
+    ↓ BiLSTM
+(8, 215, 256)         BiLSTM gives forward and backward temporal context
+    ↓ Linear
+(8, 215, 84)          per-frame note probabilities
+
 
 '''

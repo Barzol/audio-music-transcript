@@ -96,6 +96,12 @@ class MusicNetPianoDataset(Dataset):
                 dtype='float32', 
                 always_2d=True
                 )
+            
+        # padding, if the file is shorter we have to pad with zeros
+        # to mantain the correct length
+        if chunk_np.shape[0] < orig_chunk_samples:
+            pad_length = int(orig_chunk_samples - chunk_np.shape[0])
+            chunk_np = np.pad(chunk_np, ((0,pad_length), (0,0)), mode='constant')
 
         # convert to torch tensor and transpose to (channels, samples)
         waveform = torch.tensor(chunk_np.T, dtype=torch.float32) 
@@ -117,7 +123,10 @@ class MusicNetPianoDataset(Dataset):
 
         ORIG_SR = 44100
         HOP_LENGTH = 512
-        NUM_NOTES = 128
+
+        MIDI_MIN = 33   # note A1
+        MIDI_MAX = 116  # note C8
+        NUM_NOTES = MIDI_MAX - MIDI_MIN +1
 
         # read csv
         df = pd.read_csv(label_path)
@@ -147,8 +156,12 @@ class MusicNetPianoDataset(Dataset):
             local_end = min(num_frames, local_end)
 
             note = int(label_row['note'])
-            if 0 <= note < NUM_NOTES:
-                piano_roll[local_start : local_end, note] = 1.0
+            # skip notes outside A1-C8 range
+            if note < MIDI_MIN or note > MIDI_MAX:
+                continue
+
+            note_idx = note - MIDI_MIN
+            piano_roll[local_start:local_end, note_idx] = 1.0
 
         chunk_labels = torch.tensor(piano_roll, dtype=torch.float32)
 

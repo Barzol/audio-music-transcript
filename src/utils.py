@@ -1,3 +1,5 @@
+# this file contains functions shared across training and evaluation
+
 import torch
 import random
 import numpy as np
@@ -10,6 +12,7 @@ def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # fixed seed for evaluate the experiments
+# call this at the start of training
 def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -43,9 +46,9 @@ def load_config(config_path="configs/config.yaml"):
     
 # ---- EXTRACTION OF CQT FEATURES ---- 
 # this extracts the CQT from audio. 
-# - Converts the tensor in an array for librosa
+# - Converts the pytorch tensor in an array for librosa
 # - Calculates CQT
-# - takes the magnitude and ignore phase
+# - Takes the magnitude and ignore phase
 # - Converts amplitude in dB
 # - Returns the tensor
 
@@ -56,22 +59,27 @@ def extract_cqt(
         n_bins = 84,
         bins_per_octave = 12
 ):
+    # convert torch tensor to 1D array if needed
     if isinstance(waveform,torch.Tensor):
-        waveform = waveform.squeeze().numpy()
+        waveform = waveform.squeeze(0).numpy()
 
+    # computes CQT
     cqt_complex = librosa.cqt(
         y = waveform,
         sr = sr,
         hop_length = hop_length,
-        fmin = librosa.note_to_hz('A0'),
+        fmin = librosa.note_to_hz('A1'),
         n_bins = n_bins,
         bins_per_octave = bins_per_octave
     )
 
+    # Takes magnitude
     cqt_mag = np.abs(cqt_complex)
 
+    # convert amplitude to decibels
     cqt_db = librosa.amplitude_to_db(cqt_mag, ref=np.max)
 
+    # transpose from (n_bins, time_frames) to (time_frames, n_bins)
     # the tensor is [frame, 84 notes]
     return torch.tensor(cqt_db, dtype=torch.float32).T
     
