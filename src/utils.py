@@ -6,6 +6,7 @@ import numpy as np
 import os
 import yaml
 import librosa
+import time
 
 # verifies cuda
 def get_device():
@@ -84,3 +85,13 @@ def extract_cqt(
     return torch.tensor(cqt_db, dtype=torch.float32).T
     
 
+def time_start():
+    start_time = time.time()
+    return start_time
+
+def time_stop(start_time):    
+    elapsed = time.time() - start_time
+    hours   = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = int(elapsed % 60)
+    print(f"\nTotal training time: {hours:02d}h {minutes:02d}m {seconds:02d}s")

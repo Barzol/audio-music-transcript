@@ -14,28 +14,30 @@ from evaluate import evaluate
 
 def main():
     # Creiamo il parser per i comandi da terminale
-    parser = argparse.ArgumentParser(description="Progetto ML: Automatic Music Transcription (Solo Piano)")
+    parser = argparse.ArgumentParser(description="ML Project : Automatic Music Transcription")
     
     # Definiamo gli argomenti possibili
-    parser.add_argument('--download', action='store_true', help="Step 1: Scarica il dataset e crea solo_piano.csv")
-    parser.add_argument('--build', action='store_true', help="Step 2: Estrae i file del piano in data/raw/")
-    parser.add_argument('--train', action='store_true', help="Step 3: Avvia l'addestramento della CRNN")
-    parser.add_argument('--evaluate', action='store_true', help="Step 4: Valuta le metriche sul test set")
+    parser.add_argument('--download', action='store_true', help="Step 1: Download dataset and create solo_piano.csv")
+    parser.add_argument('--build', action='store_true', help="Step 2: Extract piano files in data/raw/")
+    parser.add_argument('--train', action='store_true', help="Step 3: Start Training")
+    parser.add_argument('--evaluate', action='store_true', help="Step 4: Evaluation")
+    parser.add_argument('--plot', action='store_true', help="Step 5: Plot results")
+
 
     args = parser.parse_args()
 
     # Eseguiamo l'azione richiesta
     if args.download:
-        print("--- AVVIO DOWNLOAD E FILTRAGGIO ---")
+        print("--- DOWNLOAD AND FILTER ---")
         download_data()
     elif args.build:
-        print("--- AVVIO COSTRUZIONE DATASET LOCALE ---")
+        print("--- BUILDING LOCAL DATASET ---")
         build_data()
     elif args.train:
-        print("--- AVVIO ADDESTRAMENTO ---")
+        print("--- TRAINING ---")
         train()
     elif args.evaluate:
-        print("--- AVVIO VALUTAZIONE ---")
+        print("--- EVALUATION ---")
         evaluate()
     else:
         # Se non viene passato nessun argomento, mostra l'aiuto

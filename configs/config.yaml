@@ -20,8 +20,8 @@ training:
   learning_rate: 0.0005
   scheduler_patience: 5
   scheduler_factor: 0.5
-  checkpoint_path: "best.model.pt"
+  checkpoint_path: "best_model.pt"
+  pos_weight : 15
 
 evaluation:
-  threshold: 0.5
-
+  threshold: 0.15

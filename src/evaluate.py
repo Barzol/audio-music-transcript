@@ -7,29 +7,47 @@ import numpy as np
 
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, load_checkpoint
+from utils import extract_cqt, get_device, load_checkpoint, load_config
+
+from plots import (
+    plot_precision_recall_threshold,
+    plot_prob_distribution,
+    plot_confusion_per_note,
+    plot_piano_roll
+)
 
 def evaluate():
+
+    # load hyperparameters from the config gile
+    config = load_config("configs/config.yaml")
+
     device = get_device()
     print(f"Metrics on :{device}")
 
     # -------- Dataset and Dataloader ----------
     # load test dataset
-    test_dataset = MusicNetPianoDataset(split="test")
+    test_dataset = MusicNetPianoDataset(split='test')
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
     # -------- Model ---------------------------
     # initialize and load the trained model
-    model = PianoTranscriptArchitecture().to(device)
+    model = PianoTranscriptArchitecture(
+        input_features = config['model']['input_features'],
+        hidden_size = config['model']['hidden_size'],
+        lstm_layers = config['model']['lstm_layers'],
+        dropout = config['model']['dropout']
+    ).to(device)
+
     # load the weights computed after the train
     load_checkpoint("checkpoints/best_model.pt", model, device=device)
 
     # model in evaluation mode
     model.eval()
 
-    # lists for prediction and labels
-    all_preds = []
+    # lists for prediction, probabilities and labels
+    all_probs = []
     all_labels = []
+    track_info = [] # for save data for piano_roll
 
     # -------- Evalutaion loop -----------------
     # disable the gradient computation for speed
@@ -37,6 +55,7 @@ def evaluate():
         for batch in test_loader:
             waveforms = batch["waveform"]
             labels = batch["labels"].to(device)
+            track_ids = batch["id"]
 
             # extract CQT like in the training
             cqt_list = [extract_cqt(wave) for wave in waveforms]
@@ -53,19 +72,47 @@ def evaluate():
             # apply sigmoid function for obtain probability between 0 and 1
             probs = torch.sigmoid(logits)
 
-            # apply the threshold of 0.5
-            preds = (probs >= 0.5).float()
+            probs_np = probs.cpu().numpy()
+            labels_np = labels.cpu().numpy()
 
-            # move the tensors on the CPU and convert them in array
-            # flats the dimensions (batch*frames, 84) for calculate the metrics
-            n_notes = preds.shape[-1]
-            
-            all_preds.append(preds.cpu().numpy().reshape(-1,n_notes))
-            all_labels.append(labels.cpu().numpy().reshape(-1, n_notes))
+            all_probs.append(probs_np.reshape(-1,84))
+            all_labels.append(labels_np.reshape(-1,84))
+
+            for i in range(len(track_ids)):
+                track_info.append({
+                    'id': track_ids[i],
+                    'probs': probs[i].cpu().numpy(),
+                    'labels': labels[i].cpu().numpy()
+                })
+
+    # check
+    if len(all_probs) == 0:
+        print("Error: no data. Verify test dataset")
+        return
 
     # concatenate the results
-    all_preds = np.vstack(all_preds)
+    all_probs = np.vstack(all_probs)
     all_labels = np.vstack(all_labels)
+
+    threshold = config['evaluation']['threshold']
+    all_preds = (all_probs >= threshold).astype(np.float32)
+
+    # --- Plot generation ---
+    print("\nPlot Generation")
+
+    # plot functions
+    plot_precision_recall_threshold(all_probs,all_labels)
+    plot_prob_distribution(all_probs, all_labels)
+    plot_confusion_per_note(all_labels, all_probs, threshold=threshold)
+
+    # piano roll
+    for info in track_info:
+        plot_piano_roll(
+            info['labels'],
+            info['probs'],
+            track_id=info['id'],
+            threshold=threshold
+        )
 
     # metrics
     # average='micro' metrics calculated globally on all the frames
@@ -78,6 +125,14 @@ def evaluate():
 
     # prints
     print('\n--- Results of Frame-Level Evaluation ---')
+
+    # Debug: print probability statistics to understand model output distribution
+    print(f"Max prob  : {all_probs.max():.4f}")   
+    print(f"Mean prob : {all_probs.mean():.4f}")
+    print(f"% active preds : {all_preds.mean():.4f}")
+    print(f"% active labels: {all_labels.mean():.4f}")
+
+
     print(f"Accuracy: {accuracy:.4f}")
     print(f"Precision: {precision:.4f}")
     print(f"Recall: {recall:.4f}")

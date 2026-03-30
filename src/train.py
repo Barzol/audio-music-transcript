@@ -8,9 +8,14 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config
+from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop
+import time
+import numpy as np
+from plots import plot_loss_curve
 
 def train():
+
+    start_time = time_start()
 
     # load hyperparameters from the config file
     config = load_config("configs/config.yaml")
@@ -50,7 +55,11 @@ def train():
     # Loss : Binary Cross Entropy for multi-label classification
     # BCEWithLogitsLoss because the final sigmoid will be applied 
     # in post processing
-    criterion = nn.BCEWithLogitsLoss()
+
+    # this term tells the loss to penalize missing note 
+    pos_weight = torch.ones(84).to(device) * config['training']['pos_weight']
+
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     # -------- Optimizer ---------------------
     # optimizer Adam with learning rate 0.001
@@ -70,6 +79,7 @@ def train():
 
     epochs = config['training']['epochs']
     best_loss = float('inf')
+    train_losses = []
 
     # training mode 
     model.train()
@@ -110,8 +120,10 @@ def train():
 
             # loss per epoch
             epoch_loss += loss.item()
-        
+
         avg_loss = epoch_loss/len(train_loader)
+
+        train_losses.append(avg_loss)
 
         scheduler.step(avg_loss)
 
@@ -129,11 +141,18 @@ def train():
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{epochs} - Loss : {avg_loss:.4f}")
 
+    time_stop(start_time=start_time)
+
+    np.save('checkpoints/train_losses.npy', np.array(train_losses))
+    print("Train losses saved to checkpoints/train_losses.npy")
+
     # saves model weights and optimizer state so training can be resumed
     save_checkpoint({
         'state_dict' : model.state_dict(),
         'optimizer' : optimizer.state_dict()
     }, filename="best_model.pt")
+
+    plot_loss_curve(train_losses)
 
 if __name__ == "__main__":
     train()
