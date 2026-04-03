@@ -9,16 +9,21 @@ from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
 from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop
-import time
+
 import numpy as np
 from plots import plot_loss_curve
+from report import start_run, log_epoch, end_training
 
 def train():
 
+    # starts timer for training
     start_time = time_start()
 
     # load hyperparameters from the config file
     config = load_config("configs/config.yaml")
+
+    # starts log file
+    start_run(config)
 
     # set random seed
     set_seed(42)
@@ -86,6 +91,7 @@ def train():
 
     # -------- Training loop -----------------
     for epoch in range(epochs):
+        start_time_epoch = time_start();
         epoch_loss = 0.0
 
         for batch in train_loader :
@@ -141,10 +147,19 @@ def train():
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{epochs} - Loss : {avg_loss:.4f}")
 
-    time_stop(start_time=start_time)
+        # log of epochs
+        log_epoch(epoch, avg_loss, current_lr, time_stop(start_time=start_time_epoch))
 
+    # stop timer
+    time_stop(start_time)
+
+    # end training log
+    end_training()
+
+    # saves train losses and plot it
     np.save('checkpoints/train_losses.npy', np.array(train_losses))
     print("Train losses saved to checkpoints/train_losses.npy")
+    plot_loss_curve(train_losses)
 
     # saves model weights and optimizer state so training can be resumed
     save_checkpoint({
@@ -152,7 +167,7 @@ def train():
         'optimizer' : optimizer.state_dict()
     }, filename="best_model.pt")
 
-    plot_loss_curve(train_losses)
+    
 
 if __name__ == "__main__":
     train()

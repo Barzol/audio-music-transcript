@@ -16,6 +16,8 @@ from plots import (
     plot_piano_roll
 )
 
+from report import log_metrics
+
 def evaluate():
 
     # load hyperparameters from the config gile
@@ -123,14 +125,23 @@ def evaluate():
     # accuracy : number of true predictions
     accuracy = (all_labels == all_preds).mean()
 
+    # probs
+    max_probs = all_probs.max()
+    mean_probs = all_probs.mean()
+    active_preds = all_preds.mean()
+    active_labels = all_labels.mean()
+
+    # saves into log
+    log_metrics(accuracy, precision, recall, f1, max_probs, mean_probs, active_preds, active_labels, threshold)
+
     # prints
     print('\n--- Results of Frame-Level Evaluation ---')
 
     # Debug: print probability statistics to understand model output distribution
-    print(f"Max prob  : {all_probs.max():.4f}")   
-    print(f"Mean prob : {all_probs.mean():.4f}")
-    print(f"% active preds : {all_preds.mean():.4f}")
-    print(f"% active labels: {all_labels.mean():.4f}")
+    print(f"Max prob  : {max_probs:.4f}")   
+    print(f"Mean prob : {mean_probs:.4f}")
+    print(f"% active preds : {active_preds:.4f}")
+    print(f"% active labels: {active_labels:.4f}")
 
 
     print(f"Accuracy: {accuracy:.4f}")
