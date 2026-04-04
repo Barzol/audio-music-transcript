@@ -39,7 +39,7 @@ def evaluate():
     ).to(device)
 
     # load the weights computed after the train
-    load_checkpoint("checkpoints/best_model.pt", model, device=device)
+    load_checkpoint("checkpoints/top_performance_best_model.pt", model, device=device)
 
     # model in evaluation mode
     model.eval()

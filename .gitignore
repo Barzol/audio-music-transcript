@@ -216,24 +216,40 @@ __marimo__/
 .streamlit/secrets.toml
 
 
-# =========================
-# Custom Project Additions
-# =========================
+# ======================================================================
+# CUSTOM PROJECT ADDITIONS (Specifico per MusicNet)
+# ======================================================================
 
-# Kaggle
-.cache/
-kaggle.json
+# --- AMBIENTI VIRTUALI ---
+venv/
+.venv/
+env/
 
-# Dataset Folder
+# --- MODELLI E CHECKPOINT (PESANTI - NON PUSHATE) ---
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# --- DATASET E FILE AUDIO ---
 data/**
-
-# Audio and music files
+raw_data/
 *.wav
 *.mp3
 *.flac
 *.mid
 *.midi
-
-# labels
 *.npy
-data/**/*.csv
+*.csv
+
+# --- GRAFICI E RISULTATI ---
+# Permettiamo esplicitamente le immagini così puoi vederle su GitHub
+!plots/
+plots/*.png
+plots/*.jpg
+
+# --- LOG E CACHE ---
+*.log
+.cache/
+__pycache__/
+.ipynb_checkpoints/

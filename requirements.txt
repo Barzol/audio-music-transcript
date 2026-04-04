@@ -1,0 +1,8 @@
+torch
+torchaudio
+numpy
+pandas
+kagglehub
+librosa
+PyYAML
+tensorboard
