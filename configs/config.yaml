@@ -1,3 +1,4 @@
+#Configurazione 4:	"Top Performance"
 # config.yaml
 # hyperparameters for MusicNet
 # balance quality and training (1-3h)
@@ -5,23 +6,23 @@
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
-  chunk_duration: 5.0
+  chunk_duration: 7.0
   sample_rate: 22050
 
 model :
   input_features: 84
-  hidden_size: 256
-  lstm_layers: 2
-  dropout: 0.3
+  hidden_size: 512
+  lstm_layers: 3
+  dropout: 0.4
 
 training:
-  batch_size: 16
-  epochs: 50
-  learning_rate: 0.0005
-  scheduler_patience: 5
+  batch_size: 12
+  epochs: 100
+  learning_rate: 0.0003
+  scheduler_patience: 7
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 15
+  pos_weight : 12
 
 evaluation:
-  threshold: 0.15
+  threshold: 0.25
