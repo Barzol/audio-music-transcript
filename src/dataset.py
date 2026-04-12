@@ -12,6 +12,7 @@ import random
 from torch.utils.data import Dataset
 from pathlib import Path
 import soundfile as sf
+from utils import load_config
 
 class MusicNetPianoDataset(Dataset):
 
@@ -23,12 +24,15 @@ class MusicNetPianoDataset(Dataset):
     sample_rate     : audio sample rate
     '''
 
+    # load hyperparameters from the config file
+    config = load_config("configs/config.yaml")
+
     def __init__(self, 
-                 csv_file = "data/solo_piano.csv", 
-                 data_dir="data/raw", 
+                 csv_file = config['dataset']['csv_file'], 
+                 data_dir=config['dataset']['data_dir'], 
                  split='train', 
-                 chunk_duration=5.0, 
-                 sample_rate=22050
+                 chunk_duration=config['dataset']['chunk_duration'], 
+                 sample_rate=config['dataset']['sample_rate']
                  ):
         
         project_root = Path(__file__).parent.parent
@@ -45,6 +49,8 @@ class MusicNetPianoDataset(Dataset):
 
         # computes how many audio samples correspond to one chunk
         self.chunk_samples = int(chunk_duration * sample_rate)
+
+
 
 # ---------------------------------------------------------------------------
     def __len__(self):
@@ -121,12 +127,12 @@ class MusicNetPianoDataset(Dataset):
 
         # ---------- Label loading and conversion ----------
 
-        ORIG_SR = 44100
-        HOP_LENGTH = 512
+        config = self.config
+        HOP_LENGTH = config['dataset']['hop_length']
 
         MIDI_MIN = 33   # note A1
         MIDI_MAX = 116  # note C8
-        NUM_NOTES = MIDI_MAX - MIDI_MIN +1
+        NUM_NOTES = MIDI_MAX - MIDI_MIN + 1
 
         # read csv
         df = pd.read_csv(label_path)

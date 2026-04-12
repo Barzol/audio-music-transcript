@@ -7,6 +7,8 @@ dataset:
   data_dir: "data/raw"
   chunk_duration: 7.0
   sample_rate: 22050
+  hop_length: 512
+  orig_sr: 44100
 
 model :
   input_features: 84
@@ -21,10 +23,11 @@ training:
   scheduler_patience: 5
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 5
+  focal_alpha : 0.35
+  focal_gamma : 2.0
 
 evaluation:
-  threshold: 0.20
+  threshold: 0.25
 
 # BEST PERFORMANCE AFTER TUNING
 # dataset:

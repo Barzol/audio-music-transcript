@@ -63,10 +63,14 @@ def start_run(config):
 
     # Build a descriptive filename from the most important hyperparameters
     timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    pos_weight = config['training'].get('pos_weight', 'N/A')
+    pos_weight = config['training'].get('pos_weight', None)
+    focal_alpha = config['training'].get('focal_alpha', None)
     lr         = config['training']['learning_rate']
     hs         = config['model']['hidden_size']
-    filename   = f"{timestamp}_pw{pos_weight}_lr{lr}_hs{hs}.log"
+    if focal_alpha is not None:
+        filename   = f"{timestamp}_focal{focal_alpha}_lr{lr}_hs{hs}.log"
+    else:
+        filename   = f"{timestamp}_pw{pos_weight}_lr{lr}_hs{hs}.log"
 
     log_path = LOGS_DIR / filename
 

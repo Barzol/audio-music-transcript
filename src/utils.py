@@ -7,6 +7,8 @@ import os
 import yaml
 import librosa
 import time
+import torch.nn as nn
+import torch.nn.functional as F
 
 # verifies cuda
 def get_device():
@@ -98,3 +100,34 @@ def print_time(elapsed):
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
     print(f"\nTotal time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+
+
+class FocalLoss(nn.Module):
+
+    def __init__(self, alpha=0.25, gamma=2.0):
+        
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self,logits,targets):
+        bce = F.binary_cross_entropy_with_logits(
+            logits, targets, reduction='none'
+        )
+
+        probs = torch.sigmoid(logits)
+
+        pt = torch.where(targets == 1, probs, 1 - probs)
+
+        focal_weight = (1 - pt) ** self.gamma
+
+        alpha_t = torch.where(
+            targets ==1,
+            torch.full_like(targets, self.alpha),
+            torch.full_like(targets, 1 - self.alpha)
+        )
+
+        loss = alpha_t * focal_weight * bce
+
+        return loss.mean()
+    
