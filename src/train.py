@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop
+from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop, print_time
 
 import numpy as np
 from plots import plot_loss_curve
@@ -151,7 +151,7 @@ def train():
         log_epoch(epoch, avg_loss, current_lr, time_stop(start_time=start_time_epoch))
 
     # stop timer
-    time_stop(start_time)
+    print_time(time_stop(start_time))
 
     # end training log
     end_training()

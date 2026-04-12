@@ -91,7 +91,10 @@ def time_start():
 
 def time_stop(start_time):    
     elapsed = time.time() - start_time
+    return elapsed
+
+def print_time(elapsed):
     hours   = int(elapsed // 3600)
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
-    print(f"\nTotal training time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+    print(f"\nTotal time: {hours:02d}h {minutes:02d}m {seconds:02d}s")

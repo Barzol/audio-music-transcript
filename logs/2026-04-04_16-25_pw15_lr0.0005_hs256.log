@@ -1,0 +1,33 @@
+======================================================================
+  EXPERIMENT LOG
+  Started : 2026-04-04 16:25:40
+  File    : 2026-04-04_16-25_pw15_lr0.0005_hs256.log
+======================================================================
+
+-- HYPERPARAMETERS --------------------------------------------------
+
+  [ Model ]
+  input_features     : 84
+  hidden_size        : 256
+  lstm_layers        : 2
+  dropout            : 0.3
+
+  [ Training ]
+  batch_size         : 16
+  learning_rate      : 0.0005
+  epochs             : 50
+  pos_weight         : 15
+  scheduler_patience : 5
+  scheduler_factor   : 0.5
+
+  [ Dataset ]
+  chunk_duration     : 5.0 s
+  sample_rate        : 22050 Hz
+
+  [ Evaluation ]
+  threshold          : 0.15
+
+-- TRAINING ---------------------------------------------------------
+
+  Epoch    Loss         LR             Time      
+  -------- ------------ -------------- ----------
