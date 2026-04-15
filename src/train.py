@@ -37,7 +37,8 @@ def train():
         data_dir = config['dataset']['data_dir'],
         split='train',
         chunk_duration = config['dataset']['chunk_duration'],
-        sample_rate = config['dataset']['sample_rate']
+        sample_rate = config['dataset']['sample_rate'],
+        augment = True
     )
 
     # shuffle=True : randomized the order of tracks
