@@ -83,7 +83,37 @@ def extract_cqt(
     # transpose from (n_bins, time_frames) to (time_frames, n_bins)
     # the tensor is [frame, 84 notes]
     return torch.tensor(cqt_db, dtype=torch.float32).T
-    
+
+# ---- EXTRACTION OF STFT FEATURES ---- 
+# this extracts the STFT from audio. 
+
+
+def extract_stft(
+        waveform,
+        sr=22050,
+        hop_length=512,
+        n_fft=2048
+):
+    if isinstance(waveform, torch.Tensor):
+        waveform = waveform.squeeze(0).numpy()
+
+    # compute STFT
+    stft_complex = librosa.stft(
+        y=waveform,
+        hop_length=hop_length,
+        n_fft=n_fft
+    )
+
+    # take magnitude
+    stft_mag = np.abs(stft_complex)
+
+    # convert amplitude to decibels
+    stft_db = librosa.amplitude_to_db(stft_mag, ref=np.max)
+
+    # (freq, time) → (time, freq)
+    return torch.tensor(stft_db, dtype=torch.float32).T
+
+
 
 def time_start():
     start_time = time.time()

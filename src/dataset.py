@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import random
 from torch.utils.data import Dataset
+from src.utils import extract_cqt, extract_stft
 from pathlib import Path
 import soundfile as sf
 
@@ -28,7 +29,8 @@ class MusicNetPianoDataset(Dataset):
                  data_dir="data/raw", 
                  split='train', 
                  chunk_duration=5.0, 
-                 sample_rate=22050
+                 sample_rate=22050,
+                 feature_type="cqt"
                  ):
         
         project_root = Path(__file__).parent.parent
@@ -42,6 +44,7 @@ class MusicNetPianoDataset(Dataset):
         # store configuration so __getitem__ can access them
         self.data_dir = Path(__file__).parent.parent / data_dir
         self.sample_rate = sample_rate
+        self.feature_type = feature_type
 
         # computes how many audio samples correspond to one chunk
         self.chunk_samples = int(chunk_duration * sample_rate)
@@ -58,6 +61,7 @@ class MusicNetPianoDataset(Dataset):
         here we load one training example identified by the index 'idx'
 
         returns :
+            'features'   : FloatTensor of shape (num_cqt_frames, num_cqt_bins)
             'waveform'  : FloatTensor of shape (1, chunk_samples)
             'labels'    : FloatTensor of shape (num_cqt_frames, num_pitches)
             'id'        : track identifier
@@ -165,8 +169,17 @@ class MusicNetPianoDataset(Dataset):
 
         chunk_labels = torch.tensor(piano_roll, dtype=torch.float32)
 
+        # ---------- Feature extraction ----------
+        # features will be 2D tensor (time_frames, freq_bins)
+        if self.feature_type == "cqt":
+            features = extract_cqt(waveform, sr=self.sample_rate)
+        elif self.feature_type == "stft":
+            features = extract_stft(waveform, sr=self.sample_rate)
+        else:
+            raise ValueError(f"Invalid feature type: {self.feature_type}, feature_type must be 'cqt' or 'stft'")
         return {
-            "waveform": waveform,
+            #"waveform": waveform,
+            "features": features,
             "labels": chunk_labels, 
             "id": track_id
         }

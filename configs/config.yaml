@@ -7,9 +7,10 @@ dataset:
   data_dir: "data/raw"
   chunk_duration: 7.0
   sample_rate: 22050
+  feature_type: stft # options: 'cqt' or 'stft'
 
 model :
-  input_features: 84
+  input_features: 1025  #84 for CQT, 1025 for STFT
   hidden_size: 256
   lstm_layers: 2
   dropout: 0.3

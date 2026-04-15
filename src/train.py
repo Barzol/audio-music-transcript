@@ -32,12 +32,13 @@ def train():
     print(f"Training on : {device}")
 
     # -------- Dataset and Dataloader --------
-    train_dataset = MusicNetPianoDataset(
+    train_dataset = MusicNetPianoDataset (
         csv_file = config['dataset']['csv_file'],
         data_dir = config['dataset']['data_dir'],
         split='train',
         chunk_duration = config['dataset']['chunk_duration'],
-        sample_rate = config['dataset']['sample_rate']
+        sample_rate = config['dataset']['sample_rate'],
+        feature_type=config['dataset']['feature_type']
     )
 
     # shuffle=True : randomized the order of tracks
@@ -96,16 +97,9 @@ def train():
 
         for batch in train_loader :
 
-            # moves waveform and labels to target device
-            waveforms = batch["waveform"]
+            # moves inputs and labels to target device
+            inputs = batch["features"].to(device)
             labels = batch["labels"].to(device)
-
-            # extracting CQT features for batch
-            # features will be 2D tensor (time_frames, freq_bins)
-            cqt_list = [extract_cqt(wave) for wave in waveforms]
-
-            # stack into a single batch tensor
-            inputs = torch.stack(cqt_list).to(device)
 
             # reset gradients
             optimizer.zero_grad()
