@@ -10,9 +10,9 @@ dataset:
 
 model :
   input_features: 84
-  hidden_size: 256
-  lstm_layers: 2
-  dropout: 0.3
+  hidden_size: 512 #256 -> prima
+  lstm_layers: 3 #2 -> prima
+  dropout: 0.4 #0.3 -> prima
 
 training:
   batch_size: 12
@@ -21,10 +21,10 @@ training:
   scheduler_patience: 5
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 5
+  pos_weight : 1 #5 -> prima
 
 evaluation:
-  threshold: 0.20
+  threshold: 0.40 #0.40 -> prima
 
 # BEST PERFORMANCE AFTER TUNING
 # dataset:

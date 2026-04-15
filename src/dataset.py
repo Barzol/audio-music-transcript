@@ -12,6 +12,7 @@ import random
 from torch.utils.data import Dataset
 from pathlib import Path
 import soundfile as sf
+from utils import load_config
 
 class MusicNetPianoDataset(Dataset):
 
@@ -21,14 +22,18 @@ class MusicNetPianoDataset(Dataset):
     split           : train or test
     chunk_duration  : length in seconds of each audio chunk
     sample_rate     : audio sample rate
+    augment         : boolean to enable data augmentation (Added)
     '''
+
+    config = load_config("configs/config.yaml")
 
     def __init__(self, 
                  csv_file = "data/solo_piano.csv", 
                  data_dir="data/raw", 
                  split='train', 
-                 chunk_duration=5.0, 
-                 sample_rate=22050
+                 chunk_duration=config["dataset"]["chunk_duration"], 
+                 sample_rate=config["dataset"]["sample_rate"],
+                 augment=False # <-- AGGIUNTO QUI
                  ):
         
         project_root = Path(__file__).parent.parent
@@ -42,6 +47,7 @@ class MusicNetPianoDataset(Dataset):
         # store configuration so __getitem__ can access them
         self.data_dir = Path(__file__).parent.parent / data_dir
         self.sample_rate = sample_rate
+        self.augment = augment # <-- AGGIUNTO QUI
 
         # computes how many audio samples correspond to one chunk
         self.chunk_samples = int(chunk_duration * sample_rate)
@@ -49,6 +55,51 @@ class MusicNetPianoDataset(Dataset):
 # ---------------------------------------------------------------------------
     def __len__(self):
         return len(self.data)
+
+# ---------------------------------------------------------------------------
+
+
+    def _apply_augmentation(self, waveform):
+        # 1. Pitch Shifting (Sposta la tonalità di +/- 1 semitono)
+        # È la più potente per la musica, ma richiede torchaudio.transforms
+        # Spostiamo di pochissimo (-0.5 / +0.5 semitoni) 
+        # così le note del CSV rimangono valide ma l'audio cambia timbro
+        n_steps = random.uniform(-0.5, 0.5) 
+        waveform = torchaudio.functional.pitch_shift(
+            waveform, 
+            sample_rate=self.sample_rate, 
+            n_steps=n_steps
+        )
+
+
+        # 2. Random Gain (più ampio)
+        waveform = waveform * random.uniform(0.5, 1.2)
+
+        # 3. Rumore meno statico
+        if random.random() > 0.5:
+            noise_level = random.uniform(0.001, 0.005)
+            waveform = waveform + noise_level * torch.randn_like(waveform)
+        
+        return waveform
+
+
+    '''
+    def _apply_augmentation(self, waveform):
+        """Metodo privato per applicare trasformazioni audio (Added)"""
+        # 1. Random Gain (Variazione volume tra 0.7x e 1.1x)
+        waveform = waveform * random.uniform(0.7, 1.1)
+
+        # 2. Additive White Noise (50% di probabilità)
+        if random.random() > 0.5:
+            noise = 0.002 * torch.randn_like(waveform)
+            waveform = waveform + noise
+            
+        # 3. Inversione di polarità (50% di probabilità)
+        if random.random() > 0.5:
+            waveform = -waveform
+            
+        return waveform
+    '''
 
 # ---------------------------------------------------------------------------
 
@@ -73,7 +124,6 @@ class MusicNetPianoDataset(Dataset):
         label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
         # ---------- Audio loading ----------
-
 
         # soundfile reads only the file header
         with sf.SoundFile(wav_path) as f:
@@ -118,6 +168,14 @@ class MusicNetPianoDataset(Dataset):
             )
             waveform = resampler(waveform)
 
+        # Porta il picco massimo a 1.0 senza distorcere
+        max_val = torch.abs(waveform).max()
+        if max_val > 0:
+            waveform = waveform / max_val
+
+        # ---------- DATA AUGMENTATION (Added) ----------
+        if self.augment:
+            waveform = self._apply_augmentation(waveform)
 
         # ---------- Label loading and conversion ----------
 
@@ -174,12 +232,9 @@ class MusicNetPianoDataset(Dataset):
 
 # --- TEST ----
 if __name__ == "__main__":
-    #
-    # test dataset on a block
-    # insert here
-
-    dataset = MusicNetPianoDataset(split="train")
-    print("------- TEST ------- ")
+    # Test con augmentation attiva per verificare che non rompa nulla
+    dataset = MusicNetPianoDataset(split="train", augment=True)
+    print("------- TEST CON AUGMENTATION ------- ")
     print(f"Tracce di training trovate: {len(dataset)}")
 
     if len(dataset) > 0:
@@ -187,4 +242,4 @@ if __name__ == "__main__":
         print(f"Waveform shape : {sample['waveform'].shape}")   # expect (1, 110250)
         print(f"Labels shape   : {sample['labels'].shape}")     # expect (215, num_pitches)
         print(f"Track id       : {sample['id']}")
-    
+        print("Test completato con successo!")
