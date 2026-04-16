@@ -44,7 +44,8 @@ def train():
     train_loader = DataLoader(
         train_dataset, 
         batch_size = config['training']['batch_size'], 
-        shuffle = True
+        shuffle = True,
+        num_workers = 0
     )
 
     # -------- Model -------------------------
@@ -62,7 +63,7 @@ def train():
     # in post processing
 
     # this term tells the loss to penalize missing note 
-    pos_weight = torch.ones(84).to(device) * config['training']['pos_weight']
+    pos_weight = torch.full((84,), config['training']['pos_weight']).to(device)
 
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
@@ -91,6 +92,7 @@ def train():
 
     # -------- Training loop -----------------
     for epoch in range(epochs):
+        model.train()
         start_time_epoch = time_start();
         epoch_loss = 0.0
 
@@ -102,7 +104,12 @@ def train():
 
             # extracting CQT features for batch
             # features will be 2D tensor (time_frames, freq_bins)
-            cqt_list = [extract_cqt(wave) for wave in waveforms]
+            cqt_list = []
+            for wave in waveforms:
+                c_feat = extract_cqt(wave.squeeze())
+                if isinstance(c_feat, np.ndarray):
+                    c_feat = torch.from_numpy(c_feat)
+                cqt_list.append(c_feat)
 
             # stack into a single batch tensor
             inputs = torch.stack(cqt_list).to(device)
@@ -122,6 +129,10 @@ def train():
             # Calculate Loss and Backpropagation
             loss = criterion(outputs, labels)
             loss.backward()
+            
+            # gradient clipping : avoid exploding gradients in LSTMs
+            torch.nn.utils.clip_grad_norm_(model.parameters(),max_norm=1.0)
+            
             optimizer.step()
 
             # loss per epoch
@@ -145,10 +156,11 @@ def train():
             print(f"New best model saved (loss: {best_loss:.4f})")
 
         current_lr = optimizer.param_groups[0]['lr']
+        duration = time_stop(start_time=start_time_epoch)
         print(f"Epoch {epoch+1}/{epochs} - Loss : {avg_loss:.4f}")
 
         # log of epochs
-        log_epoch(epoch, avg_loss, current_lr, time_stop(start_time=start_time_epoch))
+        log_epoch(epoch, avg_loss, current_lr, duration)
 
     # stop timer
     print_time(time_stop(start_time))

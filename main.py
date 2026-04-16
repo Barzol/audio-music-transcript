@@ -7,8 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'scripts'))
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 # Importiamo le funzioni principali dai vari file che abbiamo creato
-from download_and_filter import main as download_data
-from build_dataset import main as build_data
 from train import train
 from evaluate import evaluate
 

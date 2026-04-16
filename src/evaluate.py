@@ -41,7 +41,7 @@ def evaluate():
     ).to(device)
 
     # load the weights computed after the train
-    load_checkpoint("checkpoints/best_model.pt", model, device=device)
+    load_checkpoint(config["evaluation"]["checkpoint_path"], model, device=device)
 
     # model in evaluation mode
     model.eval()
@@ -60,7 +60,7 @@ def evaluate():
             track_ids = batch["id"]
 
             # extract CQT like in the training
-            cqt_list = [extract_cqt(wave) for wave in waveforms]
+            cqt_list = [extract_cqt(wave.squeeze()).float() for wave in waveforms]
             inputs = torch.stack(cqt_list).to(device)
 
             # prediction of the model
@@ -80,12 +80,14 @@ def evaluate():
             all_probs.append(probs_np.reshape(-1,84))
             all_labels.append(labels_np.reshape(-1,84))
 
-            for i in range(len(track_ids)):
-                track_info.append({
-                    'id': track_ids[i],
-                    'probs': probs[i].cpu().numpy(),
-                    'labels': labels[i].cpu().numpy()
-                })
+
+            if len(track_info) < 5:
+                for i in range(len(track_ids)):
+                    track_info.append({
+                        'id': track_ids[i],
+                        'probs': probs[i].cpu().numpy(),
+                        'labels': labels[i].cpu().numpy()
+                    })
 
     # check
     if len(all_probs) == 0:

@@ -10,15 +10,16 @@
 
 import torch
 import torch.nn as nn
+from utils import load_config
 
 class PianoTranscriptArchitecture(nn.Module):
 
     def __init__(
             self,
-            input_features = 84,    # CQT frequency bins
-            hidden_size = 128,      # size of LSTM ( output will be *2 because is Bidirectional)
-            lstm_layers = 1,        
-            dropout = 0.3           # dropout probability
+            input_features,   # CQT frequency bins
+            hidden_size,      # size of LSTM ( output will be *2 because is Bidirectional)
+            lstm_layers,        
+            dropout           # dropout probability
             ):
         
 
@@ -59,7 +60,8 @@ class PianoTranscriptArchitecture(nn.Module):
             hidden_size=hidden_size,
             num_layers=lstm_layers,
             batch_first=True,
-            bidirectional=True
+            bidirectional=True,
+            dropout=dropout if lstm_layers > 1 else 0
         )
 
 
@@ -67,7 +69,7 @@ class PianoTranscriptArchitecture(nn.Module):
         # the problem is a multi-label classification so for each frame the model produces 84 probabilities
         # Fully connected layer for 84 probabilities
         # hidden_size * 2 because it's bidirectional
-        self.fc = nn.Linear(hidden_size * 2, 84)
+        self.fc = nn.Linear(hidden_size * 2, input_features)
 
 
     def forward(self,x):
@@ -110,12 +112,15 @@ class PianoTranscriptArchitecture(nn.Module):
 
 # --- TEST DEL MODELLO ---
 if __name__ == "__main__":
-    # Test veloce per verificare le dimensioni dei tensori
-    model = PianoTranscriptArchitecture()
-    dummy_input = torch.randn(8, 215, 84) # Batch da 8 campioni [cite: 36], 215 frame, 84 bin CQT [cite: 31]
+    model = PianoTranscriptArchitecture(
+        input_features=84,
+        hidden_size=256,
+        lstm_layers=2,
+        dropout=0.3
+    )
+    dummy_input = torch.randn(8, 215, 84)
     output = model(dummy_input)
-    print(f"Shape di input: {dummy_input.shape}")
-    print(f"Shape di output: {output.shape}") # Dovrebbe essere [8, 215, 84]
+    print(f"Output shape: {output.shape}")
 
 '''
 A tiny scheme
