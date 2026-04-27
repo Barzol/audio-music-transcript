@@ -7,7 +7,7 @@ dataset:
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
   chunk_duration: 5.0
   sample_rate: 22050
-  hop_length: 512
+  hop_length: 256
   midi_min: 33
   midi_max: 116
 
@@ -15,19 +15,20 @@ model :
   input_features: 84
   hidden_size: 512
   lstm_layers: 3
-  dropout: 0.4
+  dropout: 0.5
 
 training:
-  batch_size: 32
-  epochs: 50
-  learning_rate: 0.0005
-  scheduler_patience: 3
+  batch_size: 16
+  epochs: 100
+  learning_rate: 0.001
+  scheduler_patience: 8
   scheduler_factor: 0.5
-  pos_weight : 10
+  pos_weight : 2.5
+  checkpoint_path: "best_model.pt"
 
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.35
+  threshold: 0.5
 
 # BEST PERFORMANCE AFTER TUNING
 # dataset:

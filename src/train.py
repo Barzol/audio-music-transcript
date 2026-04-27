@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop, print_time
+from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop, print_time, load_checkpoint
 
 import numpy as np
 from plots import plot_loss_curve
@@ -45,7 +45,8 @@ def train():
         train_dataset, 
         batch_size = config['training']['batch_size'], 
         shuffle = True,
-        num_workers = 0
+        num_workers = 4, # use 4 threads in parallel
+        pin_memory = True 
     )
 
     # -------- Model -------------------------
