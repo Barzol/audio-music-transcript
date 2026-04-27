@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import random
 from torch.utils.data import Dataset
-from src.utils import extract_cqt, extract_stft
+from utils import extract_cqt, extract_stft
 from pathlib import Path
 import soundfile as sf
 
@@ -76,6 +76,8 @@ class MusicNetPianoDataset(Dataset):
         wav_path = self.data_dir / "wav" / f"{track_id}.wav"
         label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
+        #wav_path = Path(row['wav_path'])
+        #label_path = Path(row['label_path'])
         # ---------- Audio loading ----------
 
 
@@ -121,7 +123,6 @@ class MusicNetPianoDataset(Dataset):
                 new_freq=self.sample_rate
             )
             waveform = resampler(waveform)
-
 
         # ---------- Label loading and conversion ----------
 
@@ -177,6 +178,12 @@ class MusicNetPianoDataset(Dataset):
             features = extract_stft(waveform, sr=self.sample_rate)
         else:
             raise ValueError(f"Invalid feature type: {self.feature_type}, feature_type must be 'cqt' or 'stft'")
+        
+        # allinea features e labels (questo perchè abbiamo 216 features ma 215 labels)
+        min_frames = min(features.shape[0], chunk_labels.shape[0])
+        features = features[:min_frames]
+        chunk_labels = chunk_labels[:min_frames]
+
         return {
             #"waveform": waveform,
             "features": features,
@@ -196,8 +203,10 @@ if __name__ == "__main__":
     print(f"Tracce di training trovate: {len(dataset)}")
 
     if len(dataset) > 0:
-        sample = dataset[0]
-        print(f"Waveform shape : {sample['waveform'].shape}")   # expect (1, 110250)
-        print(f"Labels shape   : {sample['labels'].shape}")     # expect (215, num_pitches)
-        print(f"Track id       : {sample['id']}")
-    
+        try:
+            sample = dataset[0]
+            print(f"Features shape : {sample['features'].shape}")
+            print(f"Labels shape   : {sample['labels'].shape}")
+            print(f"Track id       : {sample['id']}")
+        except Exception as e:
+            print(f"Errore: {e}")

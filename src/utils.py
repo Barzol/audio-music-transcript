@@ -7,6 +7,7 @@ import os
 import yaml
 import librosa
 import time
+#from pathlib import Path
 
 # verifies cuda
 def get_device():
@@ -44,6 +45,11 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, device="cpu"):
 def load_config(config_path="configs/config.yaml"):
     with open(config_path, 'r') as file:
         return yaml.safe_load(file)
+
+#def load_config(config_path="configs/config.yaml"):
+    #root = Path(__file__).parent.parent
+    #with open(root / config_path, 'r') as file:
+        #return yaml.safe_load(file)
     
 # ---- EXTRACTION OF CQT FEATURES ---- 
 # this extracts the CQT from audio. 
