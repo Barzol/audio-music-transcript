@@ -38,6 +38,7 @@ def train():
         split='train',
         chunk_duration = config['dataset']['chunk_duration'],
         sample_rate = config['dataset']['sample_rate'],
+        augment = True,
         feature_type=config['dataset']['feature_type']
     )
 

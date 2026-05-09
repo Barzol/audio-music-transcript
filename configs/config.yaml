@@ -16,17 +16,17 @@ model :
   dropout: 0.3
 
 training:
-  batch_size: 12
+  batch_size: 32
   epochs: 20
-  learning_rate: 0.001
-  scheduler_patience: 5
+  learning_rate: 0.0005
+  scheduler_patience: 10
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 5
+  pos_weight : 12 #5 -> prima
 
 evaluation:
-  threshold: 0.20
-
+  threshold: 0.40
+  
 # BEST PERFORMANCE AFTER TUNING
 # dataset:
 #  csv_file: "data/solo_piano.csv"
