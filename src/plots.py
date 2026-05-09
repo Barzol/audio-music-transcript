@@ -42,7 +42,7 @@ def midi_to_name(midi_number):
 # -------- LOSS CURVE --------
 
 
-def plot_loss_curve(train_losses, save=True):
+def plot_loss_curve(train_losses, val_losses=None, save=True):
 
     '''
     Plots the training loss over epochs.
@@ -61,9 +61,19 @@ def plot_loss_curve(train_losses, save=True):
         train_losses, 
         color='steelblue',
         linewidth = 2,
-        label = 'Train Loss'
+        label = 'Training Loss'
     )
     
+    if val_losses is not None:
+        ax.plot(
+            epochs,
+            val_losses,
+            color = 'darkorange',
+            linewidth = 2,
+            label = 'Validation Loss'
+        )
+        
+    ref_losses = val_losses if val_losses is not None else train_losses
     best_epoch = int(np.argmin(train_losses)) + 1
     best_loss = min(train_losses)
     
@@ -82,7 +92,11 @@ def plot_loss_curve(train_losses, save=True):
         zorder = 5 
     )
 
-    ax.set_title('Training Loss Curve', fontsize = 14, fontweight='bold')
+    ax.set_title(
+        'Training Loss Curve', 
+        fontsize = 14, 
+        fontweight='bold'
+    )
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
@@ -199,7 +213,6 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
 
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
 
-
     binary_preds = (preds >= threshold).astype(np.float32)
 
     time_frames = labels.shape[0]
@@ -258,7 +271,6 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     
     # plt.show()
     plt.close()
-
 
 
 # -------- PER-Note CONFUSION --------

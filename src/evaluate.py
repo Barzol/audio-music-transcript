@@ -110,13 +110,13 @@ def evaluate():
     plot_confusion_per_note(all_labels, all_probs, threshold=threshold)
 
     # piano roll
-    for info in track_info:
-        plot_piano_roll(
-            info['labels'],
-            info['probs'],
-            track_id=info['id'],
-            threshold=threshold
-        )
+    #for info in track_info:
+    #    plot_piano_roll(
+    #        info['labels'],
+    #        info['probs'],
+    #        track_id=info['id'],
+    #        threshold=threshold
+    #    )
 
     # metrics
     # average='micro' metrics calculated globally on all the frames
