@@ -29,28 +29,3 @@ training:
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
   threshold: 0.5
-
-# BEST PERFORMANCE AFTER TUNING
-# dataset:
-#  csv_file: "data/solo_piano.csv"
-#  data_dir: "data/raw"
-#  chunk_duration: 7.0
-#  sample_rate: 22050
-#
-#model :
-#  input_features: 84
-#  hidden_size: 256
-#  lstm_layers: 2
-#  dropout: 0.3
-#
-#training:
-#  batch_size: 12
-#  epochs: 20
-#  learning_rate: 0.001
-#  scheduler_patience: 5
-#  scheduler_factor: 0.5
-#  checkpoint_path: "best_model.pt"
-#  pos_weight : 5
-#
-#evaluation:
-#  threshold: 0.20
