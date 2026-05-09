@@ -15,7 +15,7 @@ class PianoTranscriptArchitecture(nn.Module):
 
     def __init__(
             self,
-            input_features = 84,    # CQT frequency bins
+            input_features = 84,    # frequency bins
             hidden_size = 128,      # size of LSTM ( output will be *2 because is Bidirectional)
             lstm_layers = 1,        
             dropout = 0.3           # dropout probability

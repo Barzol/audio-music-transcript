@@ -28,7 +28,14 @@ def evaluate():
 
     # -------- Dataset and Dataloader ----------
     # load test dataset
-    test_dataset = MusicNetPianoDataset(split='test')
+    test_dataset = MusicNetPianoDataset(
+        csv_file=config['dataset']['csv_file'],
+        data_dir=config['dataset']['data_dir'],
+        split='test',
+        chunk_duration=config['dataset']['chunk_duration'],
+        sample_rate=config['dataset']['sample_rate'],
+        feature_type=config['dataset']['feature_type']
+        )
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
     # -------- Model ---------------------------
@@ -55,13 +62,13 @@ def evaluate():
     # disable the gradient computation for speed
     with torch.no_grad():
         for batch in test_loader:
-            waveforms = batch["waveform"]
+            inputs = batch["features"].to(device)
             labels = batch["labels"].to(device)
             track_ids = batch["id"]
 
             # extract CQT like in the training
-            cqt_list = [extract_cqt(wave) for wave in waveforms]
-            inputs = torch.stack(cqt_list).to(device)
+            #cqt_list = [extract_cqt(wave) for wave in waveforms]
+            #inputs = torch.stack(cqt_list).to(device)
 
             # prediction of the model
             logits = model(inputs)
