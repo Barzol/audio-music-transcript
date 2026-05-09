@@ -10,22 +10,22 @@ dataset:
 
 model :
   input_features: 84
-  hidden_size: 512 #256 -> prima
-  lstm_layers: 3 #2 -> prima
-  dropout: 0.4 #0.3 -> prima
+  hidden_size: 256
+  lstm_layers: 2
+  dropout: 0.3
 
 training:
-  batch_size: 12
+  batch_size: 32
   epochs: 20
   learning_rate: 0.0005
-  scheduler_patience: 5
+  scheduler_patience: 10
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 8 #5 -> prima
+  pos_weight : 12 #5 -> prima
 
 evaluation:
-  threshold: 0.20 #0.40 -> prima
-
+  threshold: 0.40
+  
 # BEST PERFORMANCE AFTER TUNING
 # dataset:
 #  csv_file: "data/solo_piano.csv"
