@@ -15,7 +15,9 @@ class PianoTranscriptArchitecture(nn.Module):
 
     def __init__(
             self,
-            input_features = 84,    # frequency bins
+            #---------------------------------------------------
+            input_features = 84,    # frequency bins Prima 84 -> cqt, 1025 STFT
+            #---------------------------------------------------
             hidden_size = 128,      # size of LSTM ( output will be *2 because is Bidirectional)
             lstm_layers = 1,        
             dropout = 0.3           # dropout probability
@@ -23,6 +25,11 @@ class PianoTranscriptArchitecture(nn.Module):
         
 
         super(PianoTranscriptArchitecture, self).__init__()
+
+        #----------------AGGIUNTO DA CLAUDE--------------------
+        # ← NUOVO: comprime 1025 → 84 prima della CNN
+        #self.input_proj = nn.Linear(input_features, 84)
+        #------------------------------------------------------
 
         # ----- CNN MODULE -----
         # the CNN receives the CQT matrix and performs a frame by frame classification
@@ -47,7 +54,10 @@ class PianoTranscriptArchitecture(nn.Module):
 
         # Calculates the outpu dimension of CNN for passing it to LSTM
         # 84 bin, after MaxPool they are 21, we multiply it for the 64 output channels
+        #-----------------------------------------------------------
         cnn_out_freq = input_features // 4
+        #cnn_out_freq = 84 // 4
+        #-----------------------------------------------------------
         cnn_out_features = 64 * cnn_out_freq
 
 
@@ -76,6 +86,14 @@ class PianoTranscriptArchitecture(nn.Module):
 
         returns logits : FloatTensor of shape (batch, time_frames, 84)
         '''
+
+        #----------------------------------------------------------------------------
+        # x: (Batch, Frame, 1025)
+        #x = self.input_proj(x)   # ← NUOVO: (Batch, Frame, 1025) → (Batch, Frame, 84)
+
+        #x = torch.relu(x)        # ← aggiungi questa riga RELU
+        #----------------------------------------------------------------------------
+
 
         # x enters with shape : (Batch, Frame, 84)
         # we add the channel dimension
@@ -112,7 +130,10 @@ class PianoTranscriptArchitecture(nn.Module):
 if __name__ == "__main__":
     # Test veloce per verificare le dimensioni dei tensori
     model = PianoTranscriptArchitecture()
+    #---------------------------------------------------------------------------------------------------------
     dummy_input = torch.randn(8, 215, 84) # Batch da 8 campioni [cite: 36], 215 frame, 84 bin CQT [cite: 31]
+    #dummy_input = torch.randn(8, 215, 1025) # Batch da 8 campioni [cite: 36], 215 frame, 1025 bin CQT [cite: 31]
+    #---------------------------------------------------------------------------------------------------------
     output = model(dummy_input)
     print(f"Shape di input: {dummy_input.shape}")
     print(f"Shape di output: {output.shape}") # Dovrebbe essere [8, 215, 84]

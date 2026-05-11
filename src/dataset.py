@@ -34,7 +34,7 @@ class MusicNetPianoDataset(Dataset):
                  split='train', 
                  chunk_duration=config["dataset"]["chunk_duration"], 
                  sample_rate=config["dataset"]["sample_rate"],
-                 augment=False # <-- AGGIUNTO QUI,
+                 augment=False,
                  feature_type="cqt"
                  ):
         
@@ -242,6 +242,14 @@ class MusicNetPianoDataset(Dataset):
         min_frames = min(features.shape[0], chunk_labels.shape[0])
         features = features[:min_frames]
         chunk_labels = chunk_labels[:min_frames]
+
+        # NORMALIZZAZIONE
+        #------------------------------------------------------------------------------
+        # normalizzazione per-chunk
+        mean = features.mean()
+        std = features.std()
+        features = (features - mean) / (std + 1e-8)
+        #------------------------------------------------------------------------------
 
         return {
             #"waveform": waveform,
