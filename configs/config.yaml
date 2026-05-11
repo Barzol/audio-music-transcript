@@ -1,6 +1,5 @@
 # config.yaml
-# hyperparameters for MusicNet
-# balance quality and training (1-3h)
+# hyperparameters for Maestro
 
 dataset:
   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
@@ -28,4 +27,32 @@ training:
 
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.5
+  threshold: 0.5# smoke test
+
+# dataset:
+#   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
+#   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
+#   chunk_duration: 2.0
+#   sample_rate: 22050
+#   hop_length: 256
+#   midi_min: 33
+#   midi_max: 116
+# 
+# model :
+#   input_features: 84
+#   hidden_size: 128
+#   lstm_layers: 1
+#   dropout: 0.0
+# 
+# training:
+#   batch_size: 2
+#   epochs: 1
+#   learning_rate: 0.001
+#   scheduler_patience: 8
+#   scheduler_factor: 0.5
+#   pos_weight : 2.5
+#   checkpoint_path: "best_model.pt"
+# 
+# evaluation:
+#   checkpoint_path: "checkpoints/best_model.pt"
+#   threshold: 0.5

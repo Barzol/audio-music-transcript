@@ -2,12 +2,21 @@
 
 import torch
 from torch.utils.data import DataLoader
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
+from sklearn.metrics import (
+    precision_recall_fscore_support, 
+    accuracy_score
+)
+
 import numpy as np
 
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, load_checkpoint, load_config
+from utils import (
+    extract_cqt, 
+    get_device, 
+    load_checkpoint, load_config, 
+    generate_test_samples
+)
 
 from plots import (
     plot_precision_recall_threshold,
@@ -81,13 +90,14 @@ def evaluate():
             all_labels.append(labels_np.reshape(-1,84))
 
 
-            if len(track_info) < 5:
+            if len(track_info) < 3:
                 for i in range(len(track_ids)):
-                    track_info.append({
-                        'id': track_ids[i],
-                        'probs': probs[i].cpu().numpy(),
-                        'labels': labels[i].cpu().numpy()
-                    })
+                    if len(track_info) < 3:
+                        track_info.append({
+                            'id': track_ids[i],
+                            'probs': probs[i].cpu().numpy(),
+                            'labels': labels[i].cpu().numpy()
+                        })
 
     # check
     if len(all_probs) == 0:
@@ -110,13 +120,7 @@ def evaluate():
     plot_confusion_per_note(all_labels, all_probs, threshold=threshold)
 
     # piano roll
-    #for info in track_info:
-    #    plot_piano_roll(
-    #        info['labels'],
-    #        info['probs'],
-    #        track_id=info['id'],
-    #        threshold=threshold
-    #    )
+    generate_test_samples(track_info, plot_piano_roll, threshold)
 
     # metrics
     # average='micro' metrics calculated globally on all the frames

@@ -98,3 +98,16 @@ def print_time(elapsed):
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
     print(f"\nTotal time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+    
+    
+def generate_test_samples(track_info, plot_func, threshold):
+
+    samples_to_plot = track_info[:3]
+    print(f"Generazione di {len(track_info)} Piano Rolls...")
+    for info in track_info:
+        plot_func(
+            info['labels'],
+            info['probs'],
+            track_id=info['id'],
+            threshold=threshold
+        )

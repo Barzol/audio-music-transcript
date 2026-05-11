@@ -6,3 +6,5 @@ kagglehub
 librosa
 PyYAML
 tensorboard
+pretty_midi
+matplotlib
