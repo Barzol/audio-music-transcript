@@ -5,24 +5,24 @@
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
-  chunk_duration: 7.0
+  chunk_duration: 5.0
   sample_rate: 22050
   feature_type: stft # options: 'cqt' or 'stft'
 
 model :
   input_features: 1025  #84 for CQT, 1025 for STFT
-  hidden_size: 256
-  lstm_layers: 2
+  hidden_size: 1024
+  lstm_layers: 3
   dropout: 0.3
 
 training:
   batch_size: 12
   epochs: 20
-  learning_rate: 0.001
+  learning_rate: 0.0001
   scheduler_patience: 5
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 5
+  pos_weight : 8.0
 
 evaluation:
   threshold: 0.20

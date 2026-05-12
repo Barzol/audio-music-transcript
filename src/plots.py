@@ -227,6 +227,9 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     c_notes = [m for m in range(MIDI_MIN, MIDI_MAX + 1) if (m % 12) == 0]
 
     ax.set_yticks([m - MIDI_MIN for m in c_notes])
+    
+    # Sostituisci o aggiungi questo dopo imshow:
+    ax.set_ylim(MIDI_MIN, MIDI_MAX)
 
     ax.set_yticklabels([midi_to_name(m) for m in c_notes])
 
