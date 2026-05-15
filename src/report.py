@@ -82,6 +82,8 @@ def start_run(config):
         f"  File    : {filename}",
         "=" * 70,
         "",
+        "-- Musicnet with data augmentation --",
+        "",
         "-- HYPERPARAMETERS --------------------------------------------------",
         "",
         "  [ Model ]",
