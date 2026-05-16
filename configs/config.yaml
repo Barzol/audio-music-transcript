@@ -17,9 +17,9 @@ model :
 
 training:
   batch_size: 12
-  epochs: 35  # Prima -> 20
+  epochs: 20  # Prima -> 20
   learning_rate: 0.001
-  scheduler_patience: 10
+  scheduler_patience: 7
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
   pos_weight : 5
