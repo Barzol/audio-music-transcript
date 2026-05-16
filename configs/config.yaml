@@ -11,17 +11,17 @@ dataset:
 model :
   input_features: 84
   hidden_size: 512
-  lstm_layers: 3
+  lstm_layers: 2
   dropout: 0.3
 
 training:
   batch_size: 32
   epochs: 20
-  learning_rate: 0.0003
+  learning_rate: 0.0001
   scheduler_patience: 10
   scheduler_factor: 0.5
   checkpoint_path: "best_model.pt"
-  pos_weight : 10.0
+  pos_weight : 6.0
 
 evaluation:
   threshold: 0.40
