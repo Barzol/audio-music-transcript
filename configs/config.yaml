@@ -1,27 +1,36 @@
-# config.yaml
-# hyperparameters for MusicNet
-
+# config.yaml  –  Fase 2: Multi-Output CNN
+ 
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
-  chunk_duration: 7.0       # seconds for audio chunk
-  sample_rate: 22050        # Hz
-
+  chunk_duration: 7.0
+  sample_rate: 22050
+ 
 model:
-  input_features: 84        # bin CQT 
+  input_features: 84
   dropout: 0.4
-  hidden_size: 0
-  lstm_layers: 0
-
+  hidden_size: 0      # non usato, mantenuto per report.py
+  lstm_layers: 0      # non usato, mantenuto per report.py
+ 
 training:
   batch_size: 12
-  learning_rate: 0.001
   epochs: 40
-  pos_weight: 3.0           # penalizes false negatives
-  scheduler_patience: 5     
-  scheduler_factor: 0.7     # LR multiplier when it is reduced
+  learning_rate: 0.001
+
+  # pos_weight per ciascun output (onset/offset sono molto più rari del pitch)
+  pos_weight_pitch:  3.0
+  pos_weight_onset:  15.0   # onset: ~1 frame per nota vs N frame attivi
+  pos_weight_offset: 15.0   # offset: stesso ordine di grandezza degli onset
+  
+  # pesi delle singole loss nella loss totale
+  loss_weight_pitch:  1.0
+  loss_weight_onset:  1.0
+  loss_weight_offset: 1.0
+  scheduler_patience: 5
+  scheduler_factor: 0.7
   checkpoint_path: "best_model.pt"
-
+ 
 evaluation:
-  threshold: 0.25         # sigmoid threshold
-
+  threshold_pitch:  0.25
+  threshold_onset:  0.25
+  threshold_offset: 0.25

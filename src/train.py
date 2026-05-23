@@ -66,11 +66,20 @@ def train():
     ).to(device)
 
     # ── Loss ─────────────────────────────────────────────────────────────────
-    # BCEWithLogitsLoss per classificazione multi-label.
-    # pos_weight > 1 penalizza di più le note mancate (falsi negativi),
-    # utile perché le note attive sono molto meno frequenti dei silenzi.
-    pos_weight = torch.ones(84).to(device) * config['training']['pos_weight']
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    # Tre criteri con pos_weight differenti.
+    # Onset e offset hanno pos_weight più alto perché molto più rari del pitch.
+    pw_pitch  = torch.ones(84).to(device) * config['training']['pos_weight_pitch']
+    pw_onset  = torch.ones(84).to(device) * config['training']['pos_weight_onset']
+    pw_offset = torch.ones(84).to(device) * config['training']['pos_weight_offset']
+ 
+    criterion_pitch  = nn.BCEWithLogitsLoss(pos_weight=pw_pitch)
+    criterion_onset  = nn.BCEWithLogitsLoss(pos_weight=pw_onset)
+    criterion_offset = nn.BCEWithLogitsLoss(pos_weight=pw_offset)
+ 
+    # Pesi della loss totale (configurabili)
+    w_pitch  = config['training']['loss_weight_pitch']
+    w_onset  = config['training']['loss_weight_onset']
+    w_offset = config['training']['loss_weight_offset']
 
     # ── Ottimizzatore e scheduler ─────────────────────────────────────────────
     optimizer = optim.Adam(
@@ -100,8 +109,10 @@ def train():
         for batch in train_loader:
 
             waveforms = batch["waveform"]
-            labels    = batch["labels"].to(device)   # (B, T, 84)
-
+            labels    = batch["labels"].to(device)    # (B, T, 84) — pitch
+            onsets    = batch["onsets"].to(device)    # (B, T, 84) — onset
+            offsets   = batch["offsets"].to(device)   # (B, T, 84) — offset
+            
             # Estrazione CQT per ogni audio nel batch
             cqt_list = [extract_cqt(wave) for wave in waveforms]
             inputs   = torch.stack(cqt_list).to(device)  # (B, T, 84)
@@ -109,19 +120,28 @@ def train():
             # Azzera i gradienti
             optimizer.zero_grad()
 
-            # Forward pass → (B, T, 84) logit
-            outputs = model(inputs)
+            # Forward: tre output
+            logit_pitch, logit_onset, logit_offset = model(inputs)
 
-            # Allineamento temporale (CQT e piano-roll possono differire di 1 frame)
-            min_frames = min(outputs.size(1), labels.size(1))
-            outputs    = outputs[:, :min_frames, :]
-            labels     = labels[:, :min_frames, :]
-
-            # Loss + backprop
-            loss = criterion(outputs, labels)
+            # Allineamento temporale
+            T = min(logit_pitch.size(1), labels.size(1))
+            logit_pitch  = logit_pitch[:, :T, :]
+            logit_onset  = logit_onset[:, :T, :]
+            logit_offset = logit_offset[:, :T, :]
+            labels   = labels[:, :T, :]
+            onsets   = onsets[:, :T, :]
+            offsets  = offsets[:, :T, :]
+ 
+            # Tre loss
+            loss_pitch  = criterion_pitch(logit_pitch,   labels)
+            loss_onset  = criterion_onset(logit_onset,   onsets)
+            loss_offset = criterion_offset(logit_offset, offsets)
+ 
+            # Loss totale pesata
+            loss = w_pitch * loss_pitch + w_onset * loss_onset + w_offset * loss_offset
             loss.backward()
             optimizer.step()
-
+ 
             epoch_loss += loss.item()
 
         avg_loss = epoch_loss / len(train_loader)

@@ -135,7 +135,9 @@ class MusicNetPianoDataset(Dataset):
         num_frames = self.chunk_samples // HOP_LENGTH
 
         # creates an empty piano roll
-        piano_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
+        piano_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
+        onset_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
+        offset_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
 
         # convert audio start position to CQT frame index
         start_cqt_frame = start_frame // HOP_LENGTH
@@ -162,29 +164,39 @@ class MusicNetPianoDataset(Dataset):
 
             note_idx = note - MIDI_MIN
             piano_roll[local_start:local_end, note_idx] = 1.0
-
-        chunk_labels = torch.tensor(piano_roll, dtype=torch.float32)
+            
+            # Onset: 1 solo al primo frame (se cade nel chunk)
+            if local_start >= 0:
+                onset_roll[local_start, note_idx] = 1.0
+ 
+            # Offset: 1 solo all'ultimo frame (se cade nel chunk)
+            last_frame = local_end - 1
+            if 0 <= last_frame < num_frames:
+                offset_roll[last_frame, note_idx] = 1.0
 
         return {
             "waveform": waveform,
-            "labels": chunk_labels, 
-            "id": track_id
+            "labels":   torch.tensor(piano_roll,  dtype=torch.float32),
+            "onsets":   torch.tensor(onset_roll,  dtype=torch.float32),
+            "offsets":  torch.tensor(offset_roll, dtype=torch.float32),
+            "id":       track_id
         }
 
 
 # --- TEST ----
 if __name__ == "__main__":
-    #
-    # test dataset on a block
-    # insert here
-
     dataset = MusicNetPianoDataset(split="train")
-    print("------- TEST ------- ")
-    print(f"Tracce di training trovate: {len(dataset)}")
-
+    print(f"Tracce training: {len(dataset)}")
+ 
     if len(dataset) > 0:
         sample = dataset[0]
-        print(f"Waveform shape : {sample['waveform'].shape}")   # expect (1, 110250)
-        print(f"Labels shape   : {sample['labels'].shape}")     # expect (215, num_pitches)
-        print(f"Track id       : {sample['id']}")
-    
+        print(f"Waveform : {sample['waveform'].shape}")   # (1, chunk_samples)
+        print(f"Labels   : {sample['labels'].shape}")     # (T, 84)
+        print(f"Onsets   : {sample['onsets'].shape}")     # (T, 84)
+        print(f"Offsets  : {sample['offsets'].shape}")    # (T, 84)
+        print(f"Track id : {sample['id']}")
+ 
+        # Sanity check: ogni onset implica almeno un frame attivo nel piano roll
+        has_onset  = sample['onsets'].sum().item()
+        has_active = sample['labels'].sum().item()
+        print(f"Frame attivi: {has_active:.0f} | Onset frames: {has_onset:.0f}")

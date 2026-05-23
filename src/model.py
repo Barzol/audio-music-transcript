@@ -47,14 +47,21 @@ class PianoTranscriptArchitecture(nn.Module):
 
         # features after CNN:  64 channels × (84 // 4) bin = 64 × 21 = 1344
         cnn_out_dim = 64 * (input_features // 4)
-
-        # --- Head ---
-        self.head = nn.Sequential(
-            nn.Linear(cnn_out_dim, 256),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(256, 84),
-        )
+        
+        
+        # ── Tre teste parallele ───────────────────────────────────────────────
+        # Ogni testa riceve le stesse feature CNN e produce 84 logit per frame
+        def make_head():
+            return nn.Sequential(
+                nn.Linear(cnn_out_dim, 256),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(256, 84),
+            )
+            
+        self.head_pitch  = make_head()   # nota attiva
+        self.head_onset  = make_head()   # inizio nota
+        self.head_offset = make_head()   # fine nota
 
     # ── Forward ───────────────────────────────────────────────────────────────
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -79,33 +86,41 @@ class PianoTranscriptArchitecture(nn.Module):
 
         # Classificazione frame-by-frame
         # (B, T, 1344) → (B, T, 84)
-        logits = self.head(x)
+        logit_pitch  = self.head_pitch(x)    # (B, T, 84)
+        logit_onset  = self.head_onset(x)    # (B, T, 84)
+        logit_offset = self.head_offset(x)   # (B, T, 84)
 
-        return logits
+        return logit_pitch, logit_onset, logit_offset
 
 
 # ── Test rapido ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    model = BaselineCNN()
-    dummy = torch.randn(8, 215, 84)   # batch=8, 215 frame CQT, 84 bin
-    out   = model(dummy)
-    print(f"Input  shape : {dummy.shape}")
-    print(f"Output shape : {out.shape}")   # atteso: [8, 215, 84]
-    assert out.shape == dummy.shape, "Shape mismatch!"
+    model = PianoTranscriptArchitecture()
+    dummy = torch.randn(8, 215, 84)
+    pitch, onset, offset = model(dummy)
+ 
+    print(f"Input  : {dummy.shape}")
+    print(f"Pitch  : {pitch.shape}")    # atteso (8, 215, 84)
+    print(f"Onset  : {onset.shape}")    # atteso (8, 215, 84)
+    print(f"Offset : {offset.shape}")   # atteso (8, 215, 84)
+ 
+    assert pitch.shape == onset.shape == offset.shape == dummy.shape
     print("Test passato.")
-
+ 
 """
 Flusso dei tensori
 ──────────────────
-(8, 215, 84)          input CQT
+(B, T, 84)            input CQT
     ↓  unsqueeze
-(8, 1, 215, 84)       aggiunge il canale
-    ↓  block1 (Conv + BN + ReLU + MaxPool)
-(8, 32, 215, 42)      feature frequenziali, metà bin
-    ↓  block2 (Conv + BN + ReLU + Dropout + MaxPool)
-(8, 64, 215, 21)      feature più astratte, un quarto dei bin
+(B, 1, T, 84)
+    ↓  block1
+(B, 32, T, 42)
+    ↓  block2
+(B, 64, T, 21)
     ↓  permute + view
-(8, 215, 1344)        flatten per frame
-    ↓  head (Linear → ReLU → Dropout → Linear)
-(8, 215, 84)          logit per nota per frame
+(B, T, 1344)          feature condivise
+    ↓              ↓              ↓
+head_pitch     head_onset     head_offset
+    ↓              ↓              ↓
+(B, T, 84)     (B, T, 84)     (B, T, 84)
 """

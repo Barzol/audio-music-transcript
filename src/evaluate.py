@@ -1,21 +1,21 @@
-# evaluate.py  –  Fase 1: valutazione del Baseline CNN sul test set
+# evaluate.py  –  Fase 2: Multi-Output CNN
 #
-# Uso:
-#   python evaluate.py
-#
-# Carica il checkpoint salvato da train.py e calcola
-# Precision, Recall e F1-Score frame-level sul test set.
-# Genera i plot in plots/.
-
+# Differenze rispetto alla Fase 1:
+#   - Il modello restituisce (logit_pitch, logit_onset, logit_offset)
+#   - Metriche separate per pitch, onset e offset
+#   - Le threshold sono configurabili separatamente nel config
+#   - report.py viene chiamato una volta con le metriche del pitch
+#     (metrica principale); onset e offset vengono stampati a parte
+ 
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import precision_recall_fscore_support
-
+ 
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
 from utils import extract_cqt, get_device, load_checkpoint, load_config
-
+ 
 from plots import (
     plot_precision_recall_threshold,
     plot_prob_distribution,
@@ -23,123 +23,143 @@ from plots import (
     plot_piano_roll,
 )
 from report import log_metrics
-
-
+ 
+ 
+def compute_metrics(all_probs, all_labels, threshold, name=""):
+    """Calcola e stampa precision, recall, F1 per un output."""
+    preds = (all_probs >= threshold).astype(np.float32)
+ 
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        all_labels, preds, average='micro', zero_division=0
+    )
+    accuracy      = (all_labels == preds).mean()
+    max_prob      = all_probs.max()
+    mean_prob     = all_probs.mean()
+    active_preds  = preds.mean()
+    active_labels = all_labels.mean()
+ 
+    print(f"\n── {name} (threshold={threshold}) ───────────────────────────")
+    print(f"  Max prob       : {max_prob:.4f}")
+    print(f"  Mean prob      : {mean_prob:.4f}")
+    print(f"  % active preds : {active_preds:.4f}")
+    print(f"  % active labels: {active_labels:.4f}")
+    print(f"  Accuracy       : {accuracy:.4f}")
+    print(f"  Precision      : {precision:.4f}")
+    print(f"  Recall         : {recall:.4f}")
+    print(f"  F1-Score       : {f1:.4f}")
+ 
+    return accuracy, precision, recall, f1, max_prob, mean_prob, active_preds, active_labels
+ 
+ 
 def evaluate():
-
-    # ── Config ───────────────────────────────────────────────────────────────
+ 
     config = load_config("configs/config.yaml")
-
     device = get_device()
     print(f"Evaluation on: {device}")
-
+ 
     # ── Dataset e DataLoader ─────────────────────────────────────────────────
     test_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
         split='test',
     )
-    print(f"Tracce di test trovate: {len(test_dataset)}")
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
-
+ 
     # ── Modello ──────────────────────────────────────────────────────────────
     model = PianoTranscriptArchitecture(
         input_features=config['model']['input_features'],
         dropout=config['model']['dropout'],
     ).to(device)
-
+ 
     load_checkpoint("checkpoints/best_model.pt", model, device=device)
     model.eval()
-
+ 
     # ── Raccolta predizioni ───────────────────────────────────────────────────
-    all_probs  = []
-    all_labels = []
-    track_info = []   # usato per i piano roll
-
+    all_probs_pitch,  all_labels_pitch  = [], []
+    all_probs_onset,  all_labels_onset  = [], []
+    all_probs_offset, all_labels_offset = [], []
+    track_info = []
+ 
     with torch.no_grad():
         for batch in test_loader:
             waveforms = batch["waveform"]
             labels    = batch["labels"].to(device)
+            onsets    = batch["onsets"].to(device)
+            offsets   = batch["offsets"].to(device)
             track_ids = batch["id"]
-
-            # CQT identico al training
+ 
             cqt_list = [extract_cqt(wave) for wave in waveforms]
             inputs   = torch.stack(cqt_list).to(device)
-
-            logits = model(inputs)
-
-            # Allineamento temporale
-            min_frames = min(logits.size(1), labels.size(1))
-            logits = logits[:, :min_frames, :]
-            labels = labels[:, :min_frames, :]
-
-            probs = torch.sigmoid(logits)
-
-            probs_np  = probs.cpu().numpy()
-            labels_np = labels.cpu().numpy()
-
-            all_probs.append(probs_np.reshape(-1, 84))
-            all_labels.append(labels_np.reshape(-1, 84))
-
+ 
+            logit_pitch, logit_onset, logit_offset = model(inputs)
+ 
+            T = min(logit_pitch.size(1), labels.size(1))
+            logit_pitch  = logit_pitch[:, :T, :]
+            logit_onset  = logit_onset[:, :T, :]
+            logit_offset = logit_offset[:, :T, :]
+            labels   = labels[:, :T, :]
+            onsets   = onsets[:, :T, :]
+            offsets  = offsets[:, :T, :]
+ 
+            probs_pitch  = torch.sigmoid(logit_pitch).cpu().numpy()
+            probs_onset  = torch.sigmoid(logit_onset).cpu().numpy()
+            probs_offset = torch.sigmoid(logit_offset).cpu().numpy()
+ 
+            all_probs_pitch.append(probs_pitch.reshape(-1, 84))
+            all_probs_onset.append(probs_onset.reshape(-1, 84))
+            all_probs_offset.append(probs_offset.reshape(-1, 84))
+ 
+            all_labels_pitch.append(labels.cpu().numpy().reshape(-1, 84))
+            all_labels_onset.append(onsets.cpu().numpy().reshape(-1, 84))
+            all_labels_offset.append(offsets.cpu().numpy().reshape(-1, 84))
+ 
             for i in range(len(track_ids)):
                 track_info.append({
                     'id':     track_ids[i],
-                    'probs':  probs[i].cpu().numpy(),
+                    'probs':  probs_pitch[i],
                     'labels': labels[i].cpu().numpy(),
                 })
-
-    if len(all_probs) == 0:
-        print("Errore: nessun dato nel test set. Controlla il dataset.")
+ 
+    if len(all_probs_pitch) == 0:
+        print("Errore: nessun dato nel test set.")
         return
-
-    all_probs  = np.vstack(all_probs)
-    all_labels = np.vstack(all_labels)
-
-    threshold = config['evaluation']['threshold']
-    all_preds = (all_probs >= threshold).astype(np.float32)
-
-    # ── Plot ──────────────────────────────────────────────────────────────────
+ 
+    all_probs_pitch  = np.vstack(all_probs_pitch)
+    all_probs_onset  = np.vstack(all_probs_onset)
+    all_probs_offset = np.vstack(all_probs_offset)
+    all_labels_pitch  = np.vstack(all_labels_pitch)
+    all_labels_onset  = np.vstack(all_labels_onset)
+    all_labels_offset = np.vstack(all_labels_offset)
+ 
+    thr_pitch  = config['evaluation']['threshold_pitch']
+    thr_onset  = config['evaluation']['threshold_onset']
+    thr_offset = config['evaluation']['threshold_offset']
+ 
+    # ── Plot (basati sul pitch, come in Fase 1) ───────────────────────────────
     print("\nGenerazione plot...")
-    plot_precision_recall_threshold(all_probs, all_labels)
-    plot_prob_distribution(all_probs, all_labels)
-    plot_confusion_per_note(all_labels, all_probs, threshold=threshold)
-
+    plot_precision_recall_threshold(all_probs_pitch, all_labels_pitch)
+    plot_prob_distribution(all_probs_pitch, all_labels_pitch)
+    plot_confusion_per_note(all_labels_pitch, all_probs_pitch, threshold=thr_pitch)
+ 
     for info in track_info:
-        plot_piano_roll(
-            info['labels'],
-            info['probs'],
-            track_id=info['id'],
-            threshold=threshold,
-        )
-
+        plot_piano_roll(info['labels'], info['probs'],
+                        track_id=info['id'], threshold=thr_pitch)
+ 
     # ── Metriche ──────────────────────────────────────────────────────────────
-    precision, recall, f1, _ = precision_recall_fscore_support(
-        all_labels, all_preds, average='micro', zero_division=0
-    )
-
-    accuracy      = (all_labels == all_preds).mean()
-    max_probs     = all_probs.max()
-    mean_probs    = all_probs.mean()
-    active_preds  = all_preds.mean()
-    active_labels = all_labels.mean()
-
-    log_metrics(
-        accuracy, precision, recall, f1,
-        max_probs, mean_probs, active_preds, active_labels, threshold,
-    )
-
-    print('\n── Risultati – Frame-Level Evaluation ───────────────────')
-    print(f"  Max prob       : {max_probs:.4f}")
-    print(f"  Mean prob      : {mean_probs:.4f}")
-    print(f"  % active preds : {active_preds:.4f}")
-    print(f"  % active labels: {active_labels:.4f}")
-    print()
-    print(f"  Accuracy  : {accuracy:.4f}")
-    print(f"  Precision : {precision:.4f}")
-    print(f"  Recall    : {recall:.4f}")
-    print(f"  F1-Score  : {f1:.4f}")
-    print('─────────────────────────────────────────────────────────')
-
-
+    print('\n══════════════ Risultati Fase 2 – Multi-Output CNN ══════════════')
+ 
+    pitch_metrics  = compute_metrics(all_probs_pitch,  all_labels_pitch,  thr_pitch,  name="PITCH")
+    onset_metrics  = compute_metrics(all_probs_onset,  all_labels_onset,  thr_onset,  name="ONSET")
+    offset_metrics = compute_metrics(all_probs_offset, all_labels_offset, thr_offset, name="OFFSET")
+ 
+    print('═════════════════════════════════════════════════════════════════')
+ 
+    # Logga tutti e tre gli output
+    log_metrics(pitch_metrics, onset_metrics, offset_metrics,
+                thr_pitch, thr_onset, thr_offset)
+ 
+ 
 if __name__ == "__main__":
     evaluate()
+ 
+ 
