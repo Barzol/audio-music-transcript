@@ -14,20 +14,20 @@
 #   log_metrics(pitch_metrics, onset_metrics,  : metriche di valutazione per i 3 output
 #               offset_metrics, thr_pitch,
 #               thr_onset, thr_offset)
- 
+
 from datetime import datetime
 from pathlib import Path
- 
+
 # --- Paths ---
 ROOT_DIR        = Path(__file__).parent.parent
 LOGS_DIR        = ROOT_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
- 
+
 ACTIVE_LOG_FILE = ROOT_DIR / "checkpoints" / "active_log.txt"
- 
- 
+
+
 # --- utils ---
- 
+
 def _get_log_path():
     if not ACTIVE_LOG_FILE.exists():
         raise FileNotFoundError(
@@ -35,16 +35,16 @@ def _get_log_path():
             "Run --train before --evaluate."
         )
     return Path(ACTIVE_LOG_FILE.read_text().strip())
- 
- 
+
+
 def _write(log_path, text):
     with open(log_path, 'a') as f:
         f.write(text + "\n")
     print(text)
- 
- 
+
+
 # --- Run logs ---
- 
+
 def start_run(config):
     """
     Crea il file di log per la run e scrive tutti gli iperparametri.
@@ -56,22 +56,22 @@ def start_run(config):
     lr         = config['training']['learning_rate']
     dropout    = config['model']['dropout']
     filename   = f"{timestamp}_pwp{pw_pitch}_lr{lr}_do{dropout}.log"
- 
+
     log_path = LOGS_DIR / filename
- 
+
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
- 
+
     thr_pitch  = config['evaluation'].get('threshold_pitch',  'N/A')
     thr_onset  = config['evaluation'].get('threshold_onset',  'N/A')
     thr_offset = config['evaluation'].get('threshold_offset', 'N/A')
- 
+
     pw_onset   = config['training'].get('pos_weight_onset',  'N/A')
     pw_offset  = config['training'].get('pos_weight_offset', 'N/A')
     lw_pitch   = config['training'].get('loss_weight_pitch',  'N/A')
     lw_onset   = config['training'].get('loss_weight_onset',  'N/A')
     lw_offset  = config['training'].get('loss_weight_offset', 'N/A')
- 
+
     lines = [
         "=" * 70,
         f"  EXPERIMENT LOG  –  Fase 2: Multi-Output CNN",
@@ -109,25 +109,26 @@ def start_run(config):
         "",
         "-- TRAINING ---------------------------------------------------------",
         "",
-        f"  {'Epoch':<8} {'Loss':<12} {'LR':<14} {'Time':<10}",
-        f"  {'-'*8} {'-'*12} {'-'*14} {'-'*10}",
+        f"  {'Epoch':<8} {'Train Loss':<14} {'Val Loss':<14} {'LR':<14} {'Time':<10}",
+        f"  {'-'*8} {'-'*14} {'-'*14} {'-'*14} {'-'*10}",
     ]
- 
+
     with open(log_path, 'w') as f:
         f.write("\n".join(lines) + "\n")
- 
+
     print(f"Log file created: {log_path}")
     return str(log_path)
- 
- 
-def log_epoch(epoch, avg_loss, current_lr, epoch_time=None):
-    """Appende una riga per ogni epoch."""
+
+
+def log_epoch(epoch, train_loss, val_loss, current_lr, epoch_time=None):
+    """Appende una riga per ogni epoch con train loss e val loss."""
     log_path = _get_log_path()
     time_str = f"{epoch_time:.1f}s" if epoch_time is not None else "N/A"
-    line     = f"  {epoch+1:<8} {avg_loss:<12.6f} {current_lr:<14.6f} {time_str:<10}"
+    line     = (f"  {epoch+1:<8} {train_loss:<14.6f} {val_loss:<14.6f} "
+                f"{current_lr:<14.6f} {time_str:<10}")
     _write(log_path, line)
- 
- 
+
+
 def end_training():
     """Scrive il separatore di fine training."""
     log_path = _get_log_path()
@@ -139,10 +140,10 @@ def end_training():
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
     print("Training phase logged.")
- 
- 
+
+
 # --- Evaluation ---
- 
+
 def _format_metrics_block(name, metrics, threshold):
     """
     metrics = (accuracy, precision, recall, f1, max_prob, mean_prob,
@@ -161,13 +162,13 @@ def _format_metrics_block(name, metrics, threshold):
         f"  % active labels: {al:.4f}",
         "",
     ]
- 
- 
+
+
 def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
                 thr_pitch, thr_onset, thr_offset):
     """
     Appende le metriche di valutazione dei tre output al log attivo.
- 
+
     Parametri
     ---------
     pitch_metrics / onset_metrics / offset_metrics :
@@ -176,7 +177,7 @@ def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
     thr_pitch / thr_onset / thr_offset : float
     """
     log_path = _get_log_path()
- 
+
     lines = [
         "-- EVALUATION -------------------------------------------------------",
         "",
@@ -190,14 +191,13 @@ def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
         "=" * 70,
         "",
     ]
- 
+
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
- 
+
     # Rimuove il puntatore al log attivo (la prossima run creerà un file nuovo)
     if ACTIVE_LOG_FILE.exists():
         ACTIVE_LOG_FILE.unlink()
- 
+
     print(f"Evaluation metrics logged.")
     print(f"Log saved at: {log_path}")
- 
