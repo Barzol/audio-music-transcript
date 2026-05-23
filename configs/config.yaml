@@ -1,52 +1,27 @@
 # config.yaml
 # hyperparameters for MusicNet
-# balance quality and training (1-3h)
 
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
-  chunk_duration: 7.0
-  sample_rate: 22050
+  chunk_duration: 7.0       # seconds for audio chunk
+  sample_rate: 22050        # Hz
 
-model :
-  input_features: 84
-  hidden_size: 256
-  lstm_layers: 2
-  dropout: 0.3
+model:
+  input_features: 84        # bin CQT 
+  dropout: 0.4
+  hidden_size: 0
+  lstm_layers: 0
 
 training:
   batch_size: 12
-  epochs: 20
   learning_rate: 0.001
-  scheduler_patience: 5
-  scheduler_factor: 0.5
+  epochs: 40
+  pos_weight: 3.0           # penalizes false negatives
+  scheduler_patience: 5     
+  scheduler_factor: 0.7     # LR multiplier when it is reduced
   checkpoint_path: "best_model.pt"
-  pos_weight : 5
 
 evaluation:
-  threshold: 0.20
+  threshold: 0.25         # sigmoid threshold
 
-# BEST PERFORMANCE AFTER TUNING
-# dataset:
-#  csv_file: "data/solo_piano.csv"
-#  data_dir: "data/raw"
-#  chunk_duration: 7.0
-#  sample_rate: 22050
-#
-#model :
-#  input_features: 84
-#  hidden_size: 256
-#  lstm_layers: 2
-#  dropout: 0.3
-#
-#training:
-#  batch_size: 12
-#  epochs: 20
-#  learning_rate: 0.001
-#  scheduler_patience: 5
-#  scheduler_factor: 0.5
-#  checkpoint_path: "best_model.pt"
-#  pos_weight : 5
-#
-#evaluation:
-#  threshold: 0.20

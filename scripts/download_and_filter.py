@@ -1,81 +1,121 @@
 import kagglehub
 import pandas as pd
-from pathlib import Path
+import random
 import os
+from pathlib import Path
+from collections import defaultdict
+
+# ── Parametri dello split ─────────────────────────────────────────────────────
+TEST_RATIO = 0.15   # 15% test, 85% train
+SEED       = 42     # seed per riproducibilità
+
+
+def stratified_split(df, test_ratio, seed):
+    """
+    Divide il DataFrame in train/test in modo stratificato per compositore.
+    Garantisce almeno 1 traccia di test per ogni compositore presente.
+
+    Il compositore viene estratto dal percorso MIDI:
+      .../musicnet_midis/musicnet_midis/<Compositore>/<file>.mid
+    """
+    random.seed(seed)
+
+    # Estrai compositore dall'ultima occorrenza di 'musicnet_midis' nel path
+    def get_composer(midi_path):
+        parts = Path(midi_path).parts
+        idx = [i for i, p in enumerate(parts) if p == "musicnet_midis"]
+        return parts[idx[-1] + 1] if idx and idx[-1] + 1 < len(parts) else "Unknown"
+
+    df = df.copy()
+    df["composer"] = df["midi_path"].apply(get_composer)
+
+    new_splits = []
+
+    for composer, group in df.groupby("composer"):
+        ids = group.index.tolist()
+        random.shuffle(ids)
+
+        n_test = max(1, round(len(ids) * test_ratio))   # almeno 1 per compositore
+        test_ids  = set(ids[:n_test])
+        train_ids = set(ids[n_test:])
+
+        print(f"  {composer:12s}: {len(train_ids):3d} train, {len(test_ids):2d} test "
+              f"(tot {len(ids)}, test {len(test_ids)/len(ids)*100:.0f}%)")
+
+        for idx in ids:
+            new_splits.append((idx, "test" if idx in test_ids else "train"))
+
+    split_map = dict(new_splits)
+    df["split"] = df.index.map(split_map)
+    df.drop(columns=["composer"], inplace=True)
+    return df
+
 
 def main():
     print("Download MusicNet da Kaggle...")
 
-    # -------- entire dataset download ----------
+    # ── Download ──────────────────────────────────────────────────────────────
     path = kagglehub.dataset_download("imsparsh/musicnet-dataset")
-    print(f"Dataset created in: {path}")
+    print(f"Dataset scaricato in: {path}")
 
-    # -------- kaggle dataset paths variables ----------
-    root = Path(path) / "musicnet" / "musicnet"
+    root      = Path(path) / "musicnet" / "musicnet"
     meta_path = Path(path) / "musicnet_metadata.csv"
     midi_root = Path(path) / "musicnet_midis" / "musicnet_midis"
-    
-    # reading the original csv
+
     meta = pd.read_csv(meta_path)
-    # define an empty list, it will contains all the correct and verified data
-    lists = [] 
 
-    # for each row of the original csv : 
-    # - extract track id and instrument
-    # - verify if it is in train_data or test_data
-    # - adds a new element to the list
+    # ── Costruzione lista tracce ──────────────────────────────────────────────
+    print("Ricerca file WAV, label e MIDI...")
+    records = []
 
-    print("Filtering tracks and locating MIDI files :")
     for _, row in meta.iterrows():
         track_id = str(row["id"])
         ensemble = row["ensemble"]
-        
-        # train or test ? 
-        if (root / "train_data" / f"{track_id}.wav").exists():
-            split = "train"
-        elif (root / "test_data" / f"{track_id}.wav").exists():
-            split = "test"
+
+        # Determina la cartella sorgente (train o test di MusicNet)
+        # NB: questo split originale verrà sovrascritto dopo
+        if   (root / "train_data" / f"{track_id}.wav").exists():
+            src_split = "train"
+        elif (root / "test_data"  / f"{track_id}.wav").exists():
+            src_split = "test"
         else:
-            continue # if the file does not exist in both the folders, skip
+            continue    # file non trovato, salta
 
-        # check for find midi files in the folder
-        # we add this block of code for the path of midi because the midi files
-        # are in different subdirectories, each for composer (Bach, beethoven etc...)
-        # we use '*' beacuse most of the filenames of the midi_files are :
-        # {track_id}_{something}.midi
         midi_files = list(midi_root.rglob(f"{track_id}*.mid*"))
-
         if not midi_files:
-            print(f"Warning: MIDI not found for track {track_id}, skipping")
+            print(f"  Warning: MIDI non trovato per track {track_id}, skip")
             continue
 
-        midi_path = str(midi_files[0])
-
-        # now append to the list
-        lists.append({
-            "id": track_id,
-            "split": split,
-            "ensemble": ensemble,
-            "wav_path": str(root / f"{split}_data" / f"{track_id}.wav"),
-            "label_path": str(root / f"{split}_labels" / f"{track_id}.csv"),
-            "midi_path": midi_path
+        records.append({
+            "id":         track_id,
+            "split":      src_split,            # verrà sovrascritto
+            "ensemble":   ensemble,
+            "wav_path":   str(root / f"{src_split}_data"   / f"{track_id}.wav"),
+            "label_path": str(root / f"{src_split}_labels" / f"{track_id}.csv"),
+            "midi_path":  str(midi_files[0]),
         })
 
-    # tranfosrms the list in a Data Frame , a table
-    df = pd.DataFrame(lists)
-    
-    # Makes the 'data' folder
+    df = pd.DataFrame(records)
+
+    # ── Filtra Solo Piano ─────────────────────────────────────────────────────
+    solo_piano = df[df["ensemble"] == "Solo Piano"].copy().reset_index(drop=True)
+    print(f"\nTracce Solo Piano trovate: {len(solo_piano)}")
+
+    # ── Split stratificato per compositore ────────────────────────────────────
+    print(f"\nSplit stratificato (test_ratio={TEST_RATIO}, seed={SEED}):")
+    solo_piano = stratified_split(solo_piano, TEST_RATIO, SEED)
+
+    n_train = (solo_piano["split"] == "train").sum()
+    n_test  = (solo_piano["split"] == "test").sum()
+    print(f"\n  → TOTALE: {n_train} train, {n_test} test "
+          f"({n_test/(n_train+n_test)*100:.1f}% test)")
+
+    # ── Salvataggio CSV ───────────────────────────────────────────────────────
     os.makedirs("data", exist_ok=True)
-
-    # Filters the DataFrame and selects only the files labeled 'Solo Piano'
-    solo_piano = df[df["ensemble"] == "Solo Piano"]
-
-    # Creates a new .csv file with 'Solo Piano'
-    solo_piano.to_csv("data/solo_piano.csv", index=False)
-    print(f"Saved data/solo_piano.csv with {len(solo_piano)} tracks.")
+    out_path = "data/solo_piano.csv"
+    solo_piano.to_csv(out_path, index=False)
+    print(f"\nSalvato {out_path} con {len(solo_piano)} tracce.")
 
 
-# This prevents the script to be executed in a wrong way
-# Apparently it is a best practice in Python to insert this check
 if __name__ == "__main__":
     main()
