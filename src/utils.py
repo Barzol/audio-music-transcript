@@ -8,6 +8,7 @@ import yaml
 import librosa
 import time
 
+
 # verifies cuda
 def get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -78,7 +79,9 @@ def extract_cqt(
     cqt_mag = np.abs(cqt_complex)
 
     # convert amplitude to decibels
-    cqt_db = librosa.amplitude_to_db(cqt_mag, ref=np.max)
+    cqt_db = librosa.amplitude_to_db(cqt_mag, ref=1.0)
+    cqt_db = np.clip(cqt_db, a_min = -80.0, a_max = 0.0)
+    cqt_db = (cqt_db + 80.0) / 80.0
 
     # transpose from (n_bins, time_frames) to (time_frames, n_bins)
     # the tensor is [frame, 84 notes]
@@ -98,3 +101,16 @@ def print_time(elapsed):
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
     print(f"\nTotal time: {hours:02d}h {minutes:02d}m {seconds:02d}s")
+    
+    
+def generate_test_samples(track_info, plot_func, threshold):
+
+    samples_to_plot = track_info[:3]
+    print(f"Generazione di {len(track_info)} Piano Rolls...")
+    for info in track_info:
+        plot_func(
+            info['labels'],
+            info['probs'],
+            track_id=info['id'],
+            threshold=threshold
+        )

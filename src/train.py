@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from dataset import MusicNetPianoDataset
 from model import PianoTranscriptArchitecture
-from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop, print_time
+from utils import extract_cqt, get_device, set_seed, save_checkpoint, load_config, time_start, time_stop, print_time, load_checkpoint
 
 import numpy as np
 from plots import plot_loss_curve
@@ -39,13 +39,30 @@ def train():
         chunk_duration = config['dataset']['chunk_duration'],
         sample_rate = config['dataset']['sample_rate']
     )
-
+    
+    val_dataset = MusicNetPianoDataset(
+        csv_file = config['dataset']['csv_file'],
+        data_dir = config['dataset']['data_dir'],
+        split='validation',
+        chunk_duration = config['dataset']['chunk_duration'],
+        sample_rate = config['dataset']['sample_rate']
+    )
+    
     # shuffle=True : randomized the order of tracks
     train_loader = DataLoader(
         train_dataset, 
         batch_size = config['training']['batch_size'], 
         shuffle = True,
-        num_workers = 0
+        num_workers = 0,
+        pin_memory = True 
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size = config['training']['batch_size'],
+        shuffle = False,
+        num_workers = 0,
+        pin_memory = True
     )
 
     # -------- Model -------------------------
@@ -86,15 +103,15 @@ def train():
     epochs = config['training']['epochs']
     best_loss = float('inf')
     train_losses = []
-
-    # training mode 
-    model.train()
+    val_losses = []
 
     # -------- Training loop -----------------
     for epoch in range(epochs):
-        model.train()
         start_time_epoch = time_start();
         epoch_loss = 0.0
+        
+        # --- Training ---
+        model.train()
 
         for batch in train_loader :
 
@@ -106,7 +123,7 @@ def train():
             # features will be 2D tensor (time_frames, freq_bins)
             cqt_list = []
             for wave in waveforms:
-                c_feat = extract_cqt(wave.squeeze())
+                c_feat = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
                 if isinstance(c_feat, np.ndarray):
                     c_feat = torch.from_numpy(c_feat)
                 cqt_list.append(c_feat)
@@ -138,14 +155,50 @@ def train():
             # loss per epoch
             epoch_loss += loss.item()
 
-        avg_loss = epoch_loss/len(train_loader)
+        avg_train_loss = epoch_loss/len(train_loader)
 
-        train_losses.append(avg_loss)
+        train_losses.append(avg_train_loss)
+        
+        # --- Validation ---
+        model.eval()
+        val_loss = 0.0
+        
+        with torch.no_grad():
+            for batch in val_loader:
+                waveforms = batch["waveform"]
+                labels    = batch["labels"].to(device)
 
-        scheduler.step(avg_loss)
+                cqt_list = []
+                for wave in waveforms:
+                    c_feat = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
+                    if isinstance(c_feat, np.ndarray):
+                        c_feat = torch.from_numpy(c_feat)
+                    cqt_list.append(c_feat)
 
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+                inputs  = torch.stack(cqt_list).to(device)
+                outputs = model(inputs)
+
+                min_frames = min(outputs.size(1), labels.size(1))
+                outputs = outputs[:, :min_frames, :]
+                labels  = labels[:, :min_frames, :]
+
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+            
+        avg_val_loss = val_loss / len(val_loader)
+        val_losses.append(avg_val_loss)
+
+        scheduler.step(avg_val_loss)
+        
+        # Early stopping on minimum LR
+        min_lr = config['training']['min_lr']
+        current_lr = optimizer.param_groups[0]['lr']
+        if current_lr < min_lr:
+            print(f"Learning rate {current_lr:.6f} below minimum {min_lr:.6f}. Early stopping.")
+            break
+
+        if avg_val_loss < best_loss:
+            best_loss = avg_val_loss
             save_checkpoint({
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -157,10 +210,10 @@ def train():
 
         current_lr = optimizer.param_groups[0]['lr']
         duration = time_stop(start_time=start_time_epoch)
-        print(f"Epoch {epoch+1}/{epochs} - Loss : {avg_loss:.4f}")
+        print(f"Epoch {epoch+1}/{epochs} - Val Loss : {avg_val_loss:.4f}")
 
         # log of epochs
-        log_epoch(epoch, avg_loss, current_lr, duration)
+        log_epoch(epoch, avg_train_loss, avg_val_loss, current_lr, duration)
 
     # stop timer
     print_time(time_stop(start_time))
@@ -171,7 +224,10 @@ def train():
     # saves train losses and plot it
     np.save('checkpoints/train_losses.npy', np.array(train_losses))
     print("Train losses saved to checkpoints/train_losses.npy")
-    plot_loss_curve(train_losses)
+    
+    np.save('checkpoints/val_losses.npy', np.array(val_losses))
+    print("Validation losses saved to checkpoints/val_losses.npy")
+    plot_loss_curve(train_losses, val_losses)
 
     # saves model weights and optimizer state so training can be resumed
     save_checkpoint({
@@ -182,4 +238,27 @@ def train():
     
 
 if __name__ == "__main__":
-    train()
+    config = load_config("configs/config.yaml")
+    device = get_device()
+
+    train_dataset = MusicNetPianoDataset(split='train')
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config['training']['batch_size'],
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True
+    )
+
+    for batch in train_loader:
+        waveforms = batch["waveform"]
+        labels    = batch["labels"].to(device)
+
+        wave   = waveforms[0]
+        c_feat = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
+
+        print(f"CQT shape    : {c_feat.shape}")
+        print(f"Labels shape : {labels.shape}")
+        print(f"Labels shape[1] (un sample): {labels[0].shape}")
+        break

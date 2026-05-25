@@ -1,13 +1,12 @@
 # config.yaml
-# hyperparameters for MusicNet
-# balance quality and training (1-3h)
+# hyperparameters for Maestro
 
 dataset:
   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
   chunk_duration: 5.0
   sample_rate: 22050
-  hop_length: 512
+  hop_length: 256
   midi_min: 33
   midi_max: 116
 
@@ -18,38 +17,45 @@ model :
   dropout: 0.4
 
 training:
-  batch_size: 32
-  epochs: 50
+  batch_size: 16
+  epochs: 100
   learning_rate: 0.0005
-  scheduler_patience: 3
-  scheduler_factor: 0.5
-  pos_weight : 10
+  scheduler_patience: 8
+  scheduler_factor: 0.3
+  pos_weight : 4.5
+  checkpoint_path: "best_model.pt"
+  min_lr : 0.00005
 
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.35
+  threshold: 0.4
+  
+# smoke test
 
-# BEST PERFORMANCE AFTER TUNING
 # dataset:
-#  csv_file: "data/solo_piano.csv"
-#  data_dir: "data/raw"
-#  chunk_duration: 7.0
-#  sample_rate: 22050
-#
-#model :
-#  input_features: 84
-#  hidden_size: 256
-#  lstm_layers: 2
-#  dropout: 0.3
-#
-#training:
-#  batch_size: 12
-#  epochs: 20
-#  learning_rate: 0.001
-#  scheduler_patience: 5
-#  scheduler_factor: 0.5
-#  checkpoint_path: "best_model.pt"
-#  pos_weight : 5
-#
-#evaluation:
-#  threshold: 0.20
+#   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
+#   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
+#   chunk_duration: 2.0
+#   sample_rate: 22050
+#   hop_length: 256
+#   midi_min: 33
+#   midi_max: 116
+# 
+# model :
+#   input_features: 84
+#   hidden_size: 128
+#   lstm_layers: 1
+#   dropout: 0.0
+# 
+# training:
+#   batch_size: 2
+#   epochs: 1
+#   learning_rate: 0.001
+#   scheduler_patience: 8
+#   scheduler_factor: 0.5
+#   pos_weight : 2.5
+#   checkpoint_path: "best_model.pt"
+# 
+# evaluation:
+#   checkpoint_path: "checkpoints/best_model.pt"
+#   threshold: 0.5

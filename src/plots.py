@@ -42,7 +42,7 @@ def midi_to_name(midi_number):
 # -------- LOSS CURVE --------
 
 
-def plot_loss_curve(train_losses, save=True):
+def plot_loss_curve(train_losses, val_losses=None, save=True):
 
     '''
     Plots the training loss over epochs.
@@ -61,9 +61,19 @@ def plot_loss_curve(train_losses, save=True):
         train_losses, 
         color='steelblue',
         linewidth = 2,
-        label = 'Train Loss'
+        label = 'Training Loss'
     )
     
+    if val_losses is not None:
+        ax.plot(
+            epochs,
+            val_losses,
+            color = 'darkorange',
+            linewidth = 2,
+            label = 'Validation Loss'
+        )
+        
+    ref_losses = val_losses if val_losses is not None else train_losses
     best_epoch = int(np.argmin(train_losses)) + 1
     best_loss = min(train_losses)
     
@@ -82,7 +92,11 @@ def plot_loss_curve(train_losses, save=True):
         zorder = 5 
     )
 
-    ax.set_title('Training Loss Curve', fontsize = 14, fontweight='bold')
+    ax.set_title(
+        'Training Loss Curve', 
+        fontsize = 14, 
+        fontweight='bold'
+    )
 
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
@@ -199,12 +213,10 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
 
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
 
-
     binary_preds = (preds >= threshold).astype(np.float32)
-
     time_frames = labels.shape[0]
+    
     rgb = np.zeros((84, time_frames,3), dtype=np.float32)
-
     gt = labels.T.astype(bool)
     pred = binary_preds.T.astype(bool)
 
@@ -214,6 +226,9 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
 
     fn = gt & ~pred
     rgb[fn, 2] = 0.9
+    
+    fp = ~gt & pred
+    rgb[fp,0] = 0.9
 
     fig, ax = plt.subplots(figsize=(10,5))
 
@@ -225,10 +240,15 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     )
 
     c_notes = [m for m in range(MIDI_MIN, MIDI_MAX + 1) if (m % 12) == 0]
+    c_notes_idx = [m - MIDI_MIN for m in c_notes]
+    
+    ax.set_yticks(c_notes_idx)
 
-    ax.set_yticks([m - MIDI_MIN for m in c_notes])
+    ax.set_yticklabels([midi_to_name(m) for m in c_notes])    
+        
+    # Sostituisci o aggiungi questo dopo imshow:
+    ax.set_ylim(MIDI_MIN, MIDI_MAX)
 
-    ax.set_yticklabels([midi_to_name(m) for m in c_notes])
 
     ax.set_title(
         f'Piano Roll - Track {track_id}', 
@@ -258,7 +278,6 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     
     # plt.show()
     plt.close()
-
 
 
 # -------- PER-Note CONFUSION --------

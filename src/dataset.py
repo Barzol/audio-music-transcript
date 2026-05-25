@@ -14,6 +14,7 @@ from pathlib import Path
 import soundfile as sf
 import pretty_midi
 from utils import load_config
+import math
 
 class MusicNetPianoDataset(Dataset):
 
@@ -49,6 +50,34 @@ class MusicNetPianoDataset(Dataset):
         self.chunk_samples = int(chunk_duration * sample_rate)
 
         print(f"Dataset {split} loaded: {len(self.data)} tracks.")
+        
+        # costanti — aggiungile qui
+        HOP_LENGTH = self.config['dataset']['hop_length']
+        MIDI_MIN   = self.config['dataset']['midi_min']
+        MIDI_MAX   = self.config['dataset']['midi_max']
+        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
+        frame_rate = self.sample_rate / HOP_LENGTH
+
+        print("Pre-computing piano rolls...")
+        self.piano_rolls = {}
+        
+        for _, row in self.data.iterrows():
+            midi_path = self.data_dir / row['midi_filename']
+            pm = pretty_midi.PrettyMIDI(str(midi_path))
+            
+            total_frames = int(pm.get_end_time() * frame_rate) + 1
+            roll = np.zeros((total_frames, NUM_NOTES), dtype=np.float32)
+            
+            if len(pm.instruments) > 0:
+                for note in pm.instruments[0].notes:
+                    f_start = int(note.start * frame_rate)
+                    f_end   = min(int(note.end * frame_rate), total_frames)  # fix: clamp
+                    if MIDI_MIN <= note.pitch <= MIDI_MAX:
+                        roll[f_start:f_end, note.pitch - MIDI_MIN] = 1.0
+            
+            self.piano_rolls[row['midi_filename']] = roll
+
+        print("Piano rolls ready.")
 
 # ---------------------------------------------------------------------------
     def __len__(self):
@@ -74,7 +103,6 @@ class MusicNetPianoDataset(Dataset):
 
         # build full paths to the audio file
         wav_path = self.data_dir / row['audio_filename']
-        midi_path = self.data_dir / row['midi_filename']
 
         # ---------- Audio loading ----------
         info = sf.info(wav_path)
@@ -121,48 +149,29 @@ class MusicNetPianoDataset(Dataset):
             waveform = resampler(waveform)
 
 
-        # ---------- Label loading and conversion ----------
-        
-        start_time_sec = start_frame / orig_sr
-        end_time_sec = start_time_sec + (self.chunk_samples / self.sample_rate)
-
+        # ---------- Labels ----------
         HOP_LENGTH = self.config['dataset']['hop_length']
-        MIDI_MIN = self.config['dataset']['midi_min']
-        MIDI_MAX = self.config['dataset']['midi_max']
-        NUM_NOTES = MIDI_MAX - MIDI_MIN +1
-        
-        # define frame rate
-        frame_rate = self.sample_rate / HOP_LENGTH
+        MIDI_MIN   = self.config['dataset']['midi_min']
+        MIDI_MAX   = self.config['dataset']['midi_max']
+        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
 
-        # compute total number of CQT frames for chunk
-        num_frames = self.chunk_samples // HOP_LENGTH
+        frame_rate   = self.sample_rate / HOP_LENGTH
+        num_frames   = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
+        start_time_sec = start_frame / orig_sr
+        label_start    = int(start_time_sec * frame_rate)
+        label_end      = label_start + num_frames
 
-        # creates an empty piano roll
-        piano_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
+        full_roll  = self.piano_rolls[row['midi_filename']]
+        piano_roll = full_roll[label_start:min(label_end, len(full_roll))]
 
-        # convert audio start position to CQT frame index
-        pm = pretty_midi.PrettyMIDI(str(midi_path))
+        if len(piano_roll) < num_frames:
+            pad = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
+            piano_roll = np.vstack([piano_roll, pad])
 
-        # 
-        if len(pm.instruments) > 0:
-            piano = pm.instruments[0]
-            for note in piano.notes:
-                # Verifica se la nota cade nel chunk
-                if note.end > start_time_sec and note.start < end_time_sec:
-                    l_start = int((note.start - start_time_sec) * frame_rate)
-                    l_end = int((note.end - start_time_sec) * frame_rate)
-                    
-                    l_start = max(0, l_start)
-                    l_end = min(num_frames, l_end)
-                    
-                    if MIDI_MIN <= note.pitch <= MIDI_MAX:
-                        piano_roll[l_start:l_end, note.pitch - MIDI_MIN] = 1.0
-                        
-        
         return {
             "waveform": waveform,
-            "labels": torch.tensor(piano_roll, dtype=torch.float32), 
-            "id": track_id
+            "labels":   torch.tensor(piano_roll, dtype=torch.float32),
+            "id":       track_id
         }
 
 
@@ -173,12 +182,19 @@ if __name__ == "__main__":
     # insert here
 
     dataset = MusicNetPianoDataset(split="train")
-    print("------- TEST ------- ")
-    print(f"Training tracks found: {len(dataset)}")
-
-    if len(dataset) > 0:
-        sample = dataset[0]
-        print(f"Waveform shape : {sample['waveform'].shape}")   # expect (1, 110250)
-        print(f"Labels shape   : {sample['labels'].shape}")     # expect (215, num_pitches)
-        print(f"Track id       : {sample['id']}")
+    sample = dataset[0]
     
+    labels = sample['labels']
+    waveform = sample['waveform']
+    
+    print(f"Waveform shape : {waveform.shape}")
+    print(f"Labels shape   : {labels.shape}")
+    print(f"Num frames nel CQT atteso : {1 + math.ceil(110250 / 512)}")
+    print(f"Active frames  : {(labels.sum(dim=1) > 0).sum().item()} / {labels.shape[0]}")
+    print(f"Active ratio   : {labels.mean().item():.4f}")
+    print(f"Max notes simultanee : {labels.sum(dim=1).max().item()}")
+    
+    
+    # controlla che ci siano effettivamente note nel chunk
+    print(f"\nPrimi 10 frame (somma note per frame):")
+    print(labels.sum(dim=1)[:10])
