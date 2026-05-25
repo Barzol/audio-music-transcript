@@ -16,7 +16,7 @@ import pretty_midi
 from utils import load_config
 import math
 
-class MusicNetPianoDataset(Dataset):
+class MaestroDataset(Dataset):
 
     '''
     csv_file        : path to the csv
@@ -26,7 +26,7 @@ class MusicNetPianoDataset(Dataset):
     sample_rate     : audio sample rate
     '''
     
-    config = load_config("configs/config.yaml")
+    config = load_config()
 
     def __init__(self, 
                  csv_file = config["dataset"]["csv_file"], 
@@ -71,12 +71,12 @@ class MusicNetPianoDataset(Dataset):
             if len(pm.instruments) > 0:
                 for note in pm.instruments[0].notes:
                     f_start = int(note.start * frame_rate)
-                    f_end   = min(int(note.end * frame_rate), total_frames)  # fix: clamp
+                    f_end   = min(int(note.end * frame_rate), total_frames)
                     if MIDI_MIN <= note.pitch <= MIDI_MAX:
                         roll[f_start:f_end, note.pitch - MIDI_MIN] = 1.0
-            
+ 
             self.piano_rolls[row['midi_filename']] = roll
-
+ 
         print("Piano rolls ready.")
 
 # ---------------------------------------------------------------------------
@@ -130,23 +130,20 @@ class MusicNetPianoDataset(Dataset):
         # padding, if the file is shorter we have to pad with zeros
         # to mantain the correct length
         if chunk_np.shape[0] < orig_chunk_samples:
-            pad_length = int(orig_chunk_samples - chunk_np.shape[0])
-            chunk_np = np.pad(chunk_np, ((0,pad_length), (0,0)), mode='constant')
-
+            pad_length = orig_chunk_samples - chunk_np.shape[0]
+            chunk_np   = np.pad(chunk_np, ((0, pad_length), (0, 0)), mode='constant')
+            
         # convert to torch tensor and transpose to (channels, samples)
         waveform = torch.tensor(chunk_np.T, dtype=torch.float32) 
 
-        # Mono conversion -> it averages all audio channels
+        # mono conversion
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-        # if the sampling rate changes, this re-samples at 22.05 kHz
+ 
+        # resample if needed
         if orig_sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(
-                orig_sr, 
-                self.sample_rate
-            )
-            waveform = resampler(waveform)
+            resampler = torchaudio.transforms.Resample(orig_sr, self.sample_rate)
+            waveform  = resampler(waveform)
 
 
         # ---------- Labels ----------
@@ -154,20 +151,20 @@ class MusicNetPianoDataset(Dataset):
         MIDI_MIN   = self.config['dataset']['midi_min']
         MIDI_MAX   = self.config['dataset']['midi_max']
         NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
-
-        frame_rate   = self.sample_rate / HOP_LENGTH
-        num_frames   = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
-        start_time_sec = start_frame / orig_sr
+ 
+        frame_rate     = self.sample_rate / HOP_LENGTH
+        num_frames     = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
+        start_time_sec = start_frame / orig_sr          # correct time alignment
         label_start    = int(start_time_sec * frame_rate)
         label_end      = label_start + num_frames
-
+ 
         full_roll  = self.piano_rolls[row['midi_filename']]
         piano_roll = full_roll[label_start:min(label_end, len(full_roll))]
-
+ 
         if len(piano_roll) < num_frames:
-            pad = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
+            pad        = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
             piano_roll = np.vstack([piano_roll, pad])
-
+ 
         return {
             "waveform": waveform,
             "labels":   torch.tensor(piano_roll, dtype=torch.float32),
@@ -181,20 +178,14 @@ if __name__ == "__main__":
     # test dataset on a block
     # insert here
 
-    dataset = MusicNetPianoDataset(split="train")
-    sample = dataset[0]
-    
-    labels = sample['labels']
+    dataset = MaestroDataset(split="train")
+    sample  = dataset[0]
+ 
+    labels   = sample['labels']
     waveform = sample['waveform']
-    
+ 
     print(f"Waveform shape : {waveform.shape}")
     print(f"Labels shape   : {labels.shape}")
-    print(f"Num frames nel CQT atteso : {1 + math.ceil(110250 / 512)}")
     print(f"Active frames  : {(labels.sum(dim=1) > 0).sum().item()} / {labels.shape[0]}")
     print(f"Active ratio   : {labels.mean().item():.4f}")
-    print(f"Max notes simultanee : {labels.sum(dim=1).max().item()}")
-    
-    
-    # controlla che ci siano effettivamente note nel chunk
-    print(f"\nPrimi 10 frame (somma note per frame):")
-    print(labels.sum(dim=1)[:10])
+    print(f"Max simultaneous notes : {labels.sum(dim=1).max().item()}")

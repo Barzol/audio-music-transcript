@@ -14,100 +14,50 @@ from utils import load_config
 
 class PianoTranscriptArchitecture(nn.Module):
 
-    def __init__(
-            self,
-            input_features,   # CQT frequency bins
-            hidden_size,      # size of LSTM ( output will be *2 because is Bidirectional)
-            lstm_layers,        
-            dropout           # dropout probability
-            ):
-        
-
-        super(PianoTranscriptArchitecture, self).__init__()
-
-        # ----- CNN MODULE -----
-        # the CNN receives the CQT matrix and performs a frame by frame classification
-        # expected input shape : (batch, channel=1, time_frames, bin_freq =84)
-
-        self.cnn = nn.Sequential(
-            # first convolutional block
-            nn.Conv2d(in_channels=1, out_channels=32, kernel_size=(3,3), padding=(1,1)),
-            nn.BatchNorm2d(32), # normalizes activations
+    def __init__(self, input_features=84, dropout=0.4):
+        super().__init__()
+ 
+        # Block 1 : 1 → 32 filters, MaxPool halves frequency axis
+        self.block1 = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(1, 1)),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            # halves the dimension of the frequencies ( 84 -> 42 )
-            nn.MaxPool2d(kernel_size=(1,2)),
-
-            # second convolutional block
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(3,3), padding=(1,1)),
+            nn.MaxPool2d(kernel_size=(1, 2))     # (B, 32, T, 42)
+        )
+ 
+        # Block 2 : 32 → 64 filters, MaxPool halves again
+        self.block2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=(3, 3), padding=(1, 1)),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.Dropout(dropout), #dropout for prevent overfitting
-            # halves the dimension of frequencies (42 -> 21)
-            nn.MaxPool2d(kernel_size=(1,2)),            
+            nn.Dropout(dropout),
+            nn.MaxPool2d(kernel_size=(1, 2))     # (B, 64, T, 21)
+        )
+ 
+        # After two MaxPool(1,2) : freq_bins = input_features // 4 = 21
+        # Flatten channels × freq_bins → 64 × 21 = 1344
+        cnn_out_dim = 64 * (input_features // 4)
+ 
+        # Per-frame linear head
+        self.head = nn.Sequential(
+            nn.Linear(cnn_out_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, input_features)       # → 84 logits
         )
 
-        # Calculates the outpu dimension of CNN for passing it to LSTM
-        # 84 bin, after MaxPool they are 21, we multiply it for the 64 output channels
-        cnn_out_freq = input_features // 4
-        cnn_out_features = 64 * cnn_out_freq
-
-
-        # ----- BIDIRECTIONAL LSTM MODULE -----
-        # BiLSTM for the duration of notes in the frames
-        # watches past and future for learn when a note starts and stops
-        self.bilstm = nn.LSTM(
-            input_size=cnn_out_features,
-            hidden_size=hidden_size,
-            num_layers=lstm_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout if lstm_layers > 1 else 0
-        )
-
-
-        # ----- FINAL CLASSIFICATION ----- 
-        # the problem is a multi-label classification so for each frame the model produces 84 probabilities
-        # Fully connected layer for 84 probabilities
-        # hidden_size * 2 because it's bidirectional
-        self.fc = nn.Linear(hidden_size * 2, input_features)
-
-
-    def forward(self,x):
-        '''
-        x : FloatTensor of shape (batch, time_frames, 84)
-
-        returns logits : FloatTensor of shape (batch, time_frames, 84)
-        '''
-
-        # x enters with shape : (Batch, Frame, 84)
-        # we add the channel dimension
-        # input shape : (Batch, 1, Frame, 84)
-        x = x.unsqueeze(1)
-
-        # CNN
-        # output shape : (Batch, 64, Frame, 21)
-        x = self.cnn(x)
-
-        # tensor for LSTM
-        # LSTM wants a 3d input : (Batch, Time, Feature)
-        batch_size, channels, time_frames, freq_bins = x.size()
-
-        # 
-        x = x.permute(0,2,1,3).contiguous()
-
-        # Flatten the channel and frequencies in only one dimension "feature"
-        x = x.view(batch_size, time_frames, channels*freq_bins)
-
-        # BiLSTM
-        # output shape : (Batch, Frame, 256)
-        lstm_out, _ = self.bilstm(x)
-
-        # linear layer
-        # outputs shape : (Batch, Frame, 84)
-        logits = self.fc(lstm_out)
-
-        return logits
-
+    def forward(self, x):
+        # x : (B, T, 84)
+        x = x.unsqueeze(1)                       # (B, 1, T, 84)
+ 
+        x = self.block1(x)                       # (B, 32, T, 42)
+        x = self.block2(x)                       # (B, 64, T, 21)
+ 
+        B, C, T, F = x.size()
+        x = x.permute(0, 2, 1, 3).contiguous()  # (B, T, 64, 21)
+        x = x.view(B, T, C * F)                 # (B, T, 1344)
+ 
+        return self.head(x)                      # (B, T, 84)
 
 
 # --- TEST DEL MODELLO ---

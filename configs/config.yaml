@@ -9,26 +9,28 @@ dataset:
   hop_length: 256
   midi_min: 33
   midi_max: 116
-
-model :
+ 
+model:
   input_features: 84
-  hidden_size: 512
-  lstm_layers: 3
   dropout: 0.4
-
+  # Phase 1 - BaselineCNN has no LSTM; these are kept as sentinels for report.py
+  hidden_size: 0
+  lstm_layers: 0
+ 
 training:
   batch_size: 16
-  epochs: 100
-  learning_rate: 0.0005
-  scheduler_patience: 8
-  scheduler_factor: 0.3
-  pos_weight : 4.5
+  epochs: 75
+  learning_rate: 0.001
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  pos_weight: 3.0
   checkpoint_path: "best_model.pt"
-  min_lr : 0.00005
-
+  min_lr: 0.00001
+ 
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.4
+  threshold: 0.50
+ 
   
 # smoke test
 
