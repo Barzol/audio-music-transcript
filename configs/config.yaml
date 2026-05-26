@@ -1,36 +1,86 @@
-# config.yaml  –  Fase 2: Multi-Output CNN
- 
+# config.yaml  -  Phase 3: CNN + BiLSTM + Multi-Output
+
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
   chunk_duration: 7.0
   sample_rate: 22050
- 
+
+# Rappresentazione tempo-frequenza
+# type: cqt | stft | mel
+# input_features del modello viene derivato automaticamente da questa sezione.
+#   cqt  -> cqt_bins        (default 84)
+#   stft -> n_bin in [stft_fmin, stft_fmax] Hz  (default ~193 con n_fft=1024)
+#   mel  -> mel_n_mels       (default 128)
+features:
+  type: cqt
+  hop_length: 512
+
+  # CQT - 84 bin logaritmici, A1-C8
+  cqt_bins: 84
+
+  # STFT - range pianistico ritagliato (A1=55 Hz, C8~4200 Hz)
+  stft_n_fft: 1024
+  stft_fmin: 55.0
+  stft_fmax: 4200.0
+
+  # Mel
+  mel_n_fft: 2048
+  mel_n_mels: 128
+
 model:
-  input_features: 84
-  dropout: 0.4
-  hidden_size: 0      # non usato, mantenuto per report.py
-  lstm_layers: 0      # non usato, mantenuto per report.py
- 
+  # multi_output: true  = allena pitch + onset + offset
+  #               false = solo pitch (loss_weight onset/offset ignorati)
+  multi_output: false
+  dropout: 0.3
+  hidden_size: 128
+  lstm_layers: 1
+
 training:
   batch_size: 12
-  epochs: 50
+  epochs: 80
   learning_rate: 0.001
 
-  # pos_weight per ciascun output (onset/offset sono molto più rari del pitch)
-  pos_weight_pitch:  3.0
-  pos_weight_onset:  25.0   # onset: ~1 frame per nota vs N frame attivi
-  pos_weight_offset: 25.0   # offset: stesso ordine di grandezza degli onset
-  
-  # pesi delle singole loss nella loss totale
+  pos_weight_pitch:  4.0
+  pos_weight_onset:  25.0
+  pos_weight_offset: 25.0
+
   loss_weight_pitch:  1.0
-  loss_weight_onset:  0.05
-  loss_weight_offset: 0.05
-  scheduler_patience: 8
+  loss_weight_onset:  0.0
+  loss_weight_offset: 0.0
+
+  scheduler_patience: 12
   scheduler_factor: 0.7
   checkpoint_path: "best_model.pt"
- 
+  grad_clip: 1.0
+
 evaluation:
-  threshold_pitch:  0.25
+  threshold_pitch:  0.30
   threshold_onset:  0.20
   threshold_offset: 0.20
+
+# Data Augmentation
+# enabled: false -> nessuna aug (default sicuro)
+# enabled: true  -> attiva sul train, mai su val/test
+augmentation:
+  enabled: false
+
+  # Pitch shift intero: shifta waveform E piano roll
+  pitch_shift_prob: 0.3
+  pitch_shift_max_steps: 2
+
+  # Detuning (mutuam. esclusivo col pitch shift): shift < 0.5 semitoni, label invariate
+  detuning_prob: 0.2
+  detuning_max_steps: 0.5
+
+  gain_prob: 0.3
+  gain_min: 0.5
+  gain_max: 1.2
+
+  noise_prob: 0.2
+  noise_min: 0.001
+  noise_max: 0.005
+
+  reverb_prob: 0.2
+  reverb_rt60_min: 0.3
+  reverb_rt60_max: 1.5

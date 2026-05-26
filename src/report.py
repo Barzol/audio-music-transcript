@@ -1,32 +1,22 @@
-# report.py  –  Fase 2: Multi-Output CNN
+# report.py  -  Phase 3: CNN + BiLSTM + Multi-Output
 #
-# Aggiornamenti rispetto alla Fase 1:
-#   - start_run() usa pos_weight_pitch/onset/offset e threshold_pitch/onset/offset
-#   - log_metrics() accetta e logga le metriche di tutti e tre gli output
-#   - Il bug del ACTIVE_LOG_FILE.unlink() è stato corretto:
-#     il file pointer viene eliminato solo se evaluate viene chiamato dopo train
-#     (ossia se ACTIVE_LOG_FILE esiste), ma questo non impedisce re-run di evaluate.
-#
-# Funzioni pubbliche:
-#   start_run(config)                          : crea il log, scrive gli iperparametri
-#   log_epoch(epoch, loss, lr, epoch_time)     : una riga per epoch
-#   end_training()                             : separatore fine training
-#   log_metrics(pitch_metrics, onset_metrics,  : metriche di valutazione per i 3 output
-#               offset_metrics, thr_pitch,
-#               thr_onset, thr_offset)
+# Rispetto alla versione precedente:
+#   - Sezione [Features] nel log (type, hop_length, parametri specifici)
+#   - input_features derivato automaticamente via get_input_features()
+#   - multi_output e augmentation.enabled loggati
+#   - Filename include il tipo di feature: {timestamp}_{feat}_pwp{pw}_lr{lr}_hs{hs}.log
 
 from datetime import datetime
 from pathlib import Path
 
-# --- Paths ---
+from utils import load_config, get_input_features
+
 ROOT_DIR        = Path(__file__).parent.parent
 LOGS_DIR        = ROOT_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 ACTIVE_LOG_FILE = ROOT_DIR / "checkpoints" / "active_log.txt"
 
-
-# --- utils ---
 
 def _get_log_path():
     if not ACTIVE_LOG_FILE.exists():
@@ -43,51 +33,82 @@ def _write(log_path, text):
     print(text)
 
 
-# --- Run logs ---
-
 def start_run(config):
-    """
-    Crea il file di log per la run e scrive tutti gli iperparametri.
-    Chiamato all'inizio di train().
-    Nome file: e.g. 2026-05-01_14-32_pwp3.0_lr0.001_do0.4.log
-    """
-    timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    pw_pitch   = config['training'].get('pos_weight_pitch', 'N/A')
-    lr         = config['training']['learning_rate']
-    dropout    = config['model']['dropout']
-    filename   = f"{timestamp}_pwp{pw_pitch}_lr{lr}_do{dropout}.log"
+    timestamp    = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    feat_cfg     = config.get('features', {})
+    feat_type    = feat_cfg.get('type', 'cqt')
+    sr           = config['dataset']['sample_rate']
+    pw_pitch     = config['training'].get('pos_weight_pitch', 'N/A')
+    lr           = config['training']['learning_rate']
+    hidden       = config['model'].get('hidden_size', 0)
 
+    filename = f"{timestamp}_{feat_type}_pwp{pw_pitch}_lr{lr}_hs{hidden}.log"
     log_path = LOGS_DIR / filename
 
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
 
-    thr_pitch  = config['evaluation'].get('threshold_pitch',  'N/A')
-    thr_onset  = config['evaluation'].get('threshold_onset',  'N/A')
-    thr_offset = config['evaluation'].get('threshold_offset', 'N/A')
+    # Deriva input_features automaticamente
+    try:
+        input_features = get_input_features(feat_cfg, sr=sr)
+    except Exception:
+        input_features = 'N/A'
+
+    dropout      = config['model']['dropout']
+    lstm_layers  = config['model'].get('lstm_layers', 'N/A')
+    multi_output = config['model'].get('multi_output', False)
 
     pw_onset   = config['training'].get('pos_weight_onset',  'N/A')
     pw_offset  = config['training'].get('pos_weight_offset', 'N/A')
     lw_pitch   = config['training'].get('loss_weight_pitch',  'N/A')
     lw_onset   = config['training'].get('loss_weight_onset',  'N/A')
     lw_offset  = config['training'].get('loss_weight_offset', 'N/A')
+    grad_clip  = config['training'].get('grad_clip', 'N/A')
+
+    thr_pitch  = config['evaluation'].get('threshold_pitch',  'N/A')
+    thr_onset  = config['evaluation'].get('threshold_onset',  'N/A')
+    thr_offset = config['evaluation'].get('threshold_offset', 'N/A')
+
+    aug_cfg     = config.get('augmentation', {})
+    aug_enabled = aug_cfg.get('enabled', False)
+
+    # Riga riassuntiva parametri feature per il log
+    if feat_type == 'cqt':
+        feat_detail = f"cqt_bins={feat_cfg.get('cqt_bins', 84)}"
+    elif feat_type == 'stft':
+        feat_detail = (f"n_fft={feat_cfg.get('stft_n_fft', 2048)}, "
+                       f"fmin={feat_cfg.get('stft_fmin', 55.0)}, "
+                       f"fmax={feat_cfg.get('stft_fmax', 4200.0)}")
+    elif feat_type == 'mel':
+        feat_detail = (f"n_fft={feat_cfg.get('mel_n_fft', 2048)}, "
+                       f"n_mels={feat_cfg.get('mel_n_mels', 128)}")
+    else:
+        feat_detail = 'N/A'
 
     lines = [
         "=" * 70,
-        f"  EXPERIMENT LOG  –  Fase 2: Multi-Output CNN",
+        f"  EXPERIMENT LOG  -  Phase 3: CNN + BiLSTM",
         f"  Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"  File    : {filename}",
         "=" * 70,
         "",
         "-- HYPERPARAMETERS --------------------------------------------------",
         "",
+        "  [ Features ]",
+        f"  type               : {feat_type}",
+        f"  hop_length         : {feat_cfg.get('hop_length', 512)}",
+        f"  params             : {feat_detail}",
+        f"  input_features     : {input_features}",
+        "",
         "  [ Model ]",
-        f"  input_features     : {config['model']['input_features']}",
-        f"  dropout            : {config['model']['dropout']}",
+        f"  dropout            : {dropout}",
+        f"  hidden_size        : {hidden}",
+        f"  lstm_layers        : {lstm_layers}",
+        f"  multi_output       : {multi_output}",
         "",
         "  [ Training ]",
         f"  batch_size         : {config['training']['batch_size']}",
-        f"  learning_rate      : {config['training']['learning_rate']}",
+        f"  learning_rate      : {lr}",
         f"  epochs             : {config['training']['epochs']}",
         f"  pos_weight_pitch   : {pw_pitch}",
         f"  pos_weight_onset   : {pw_onset}",
@@ -97,10 +118,12 @@ def start_run(config):
         f"  loss_weight_offset : {lw_offset}",
         f"  scheduler_patience : {config['training']['scheduler_patience']}",
         f"  scheduler_factor   : {config['training']['scheduler_factor']}",
+        f"  grad_clip          : {grad_clip}",
         "",
         "  [ Dataset ]",
         f"  chunk_duration     : {config['dataset']['chunk_duration']} s",
-        f"  sample_rate        : {config['dataset']['sample_rate']} Hz",
+        f"  sample_rate        : {sr} Hz",
+        f"  augmentation       : {'ON' if aug_enabled else 'OFF'}",
         "",
         "  [ Evaluation ]",
         f"  threshold_pitch    : {thr_pitch}",
@@ -121,7 +144,6 @@ def start_run(config):
 
 
 def log_epoch(epoch, train_loss, val_loss, current_lr, epoch_time=None):
-    """Appende una riga per ogni epoch con train loss e val loss."""
     log_path = _get_log_path()
     time_str = f"{epoch_time:.1f}s" if epoch_time is not None else "N/A"
     line     = (f"  {epoch+1:<8} {train_loss:<14.6f} {val_loss:<14.6f} "
@@ -130,7 +152,6 @@ def log_epoch(epoch, train_loss, val_loss, current_lr, epoch_time=None):
 
 
 def end_training():
-    """Scrive il separatore di fine training."""
     log_path = _get_log_path()
     lines = [
         "",
@@ -142,16 +163,10 @@ def end_training():
     print("Training phase logged.")
 
 
-# --- Evaluation ---
-
 def _format_metrics_block(name, metrics, threshold):
-    """
-    metrics = (accuracy, precision, recall, f1, max_prob, mean_prob,
-               active_preds, active_labels)
-    """
     acc, prec, rec, f1, maxp, meanp, ap, al = metrics
     return [
-        f"  [ {name} – threshold={threshold} ]",
+        f"  [ {name} - threshold={threshold} ]",
         f"  Accuracy       : {acc:.4f}",
         f"  Precision      : {prec:.4f}",
         f"  Recall         : {rec:.4f}",
@@ -166,16 +181,6 @@ def _format_metrics_block(name, metrics, threshold):
 
 def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
                 thr_pitch, thr_onset, thr_offset):
-    """
-    Appende le metriche di valutazione dei tre output al log attivo.
-
-    Parametri
-    ---------
-    pitch_metrics / onset_metrics / offset_metrics :
-        tuple (accuracy, precision, recall, f1,
-               max_prob, mean_prob, active_preds, active_labels)
-    thr_pitch / thr_onset / thr_offset : float
-    """
     log_path = _get_log_path()
 
     lines = [
@@ -195,7 +200,6 @@ def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
 
-    # Rimuove il puntatore al log attivo (la prossima run creerà un file nuovo)
     if ACTIVE_LOG_FILE.exists():
         ACTIVE_LOG_FILE.unlink()
 
