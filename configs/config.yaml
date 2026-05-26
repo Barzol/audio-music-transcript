@@ -1,6 +1,3 @@
-# config.yaml
-# hyperparameters for Maestro
-
 dataset:
   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
@@ -9,14 +6,13 @@ dataset:
   hop_length: 256
   midi_min: 33
   midi_max: 116
- 
+
 model:
   input_features: 84
   dropout: 0.4
-  # Phase 1 - BaselineCNN has no LSTM; these are kept as sentinels for report.py
   hidden_size: 0
   lstm_layers: 0
- 
+
 training:
   batch_size: 16
   epochs: 75
@@ -24,40 +20,15 @@ training:
   scheduler_patience: 5
   scheduler_factor: 0.5
   pos_weight: 3.0
+  pos_weight_onset: 20.0
+  pos_weight_offset: 15.0
+  loss_weight_onset: 0.10
+  loss_weight_offset: 0.02
   checkpoint_path: "best_model.pt"
   min_lr: 0.00001
- 
+
 evaluation:
   checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.50
- 
-  
-# smoke test
-
-# dataset:
-#   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
-#   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
-#   chunk_duration: 2.0
-#   sample_rate: 22050
-#   hop_length: 256
-#   midi_min: 33
-#   midi_max: 116
-# 
-# model :
-#   input_features: 84
-#   hidden_size: 128
-#   lstm_layers: 1
-#   dropout: 0.0
-# 
-# training:
-#   batch_size: 2
-#   epochs: 1
-#   learning_rate: 0.001
-#   scheduler_patience: 8
-#   scheduler_factor: 0.5
-#   pos_weight : 2.5
-#   checkpoint_path: "best_model.pt"
-# 
-# evaluation:
-#   checkpoint_path: "checkpoints/best_model.pt"
-#   threshold: 0.5
+  threshold: 0.4
+  threshold_onset: 0.3
+  threshold_offset: 0.4
