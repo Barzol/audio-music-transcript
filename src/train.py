@@ -1,5 +1,11 @@
-# Phase 2 MAESTRO — training loop
-# Multi-output: pitch + onset + offset with weighted BCE loss
+# train_maestro.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
+#
+# Differenze rispetto a train.py (MusicNet):
+#   - Usa MaestroDataset invece di MusicNetPianoDataset
+#   - Carica configs/config_maestro.yaml
+#   - split 'validation' (non 'val') per MAESTRO
+#   - NUM_NOTES = midi_max - midi_min + 1 = 88 (range completo pianoforte)
+#   - checkpoint_path: "best_model_maestro.pt"
 
 import torch
 import torch.nn as nn
@@ -7,173 +13,218 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from dataset import MaestroDataset
-from model   import PianoTranscriptArchitecture
-from utils   import extract_cqt, get_device, set_seed, save_checkpoint, load_config, \
-                    time_start, time_stop, print_time
+from model import PianoTranscriptArchitecture
+from utils import (
+    extract_features, get_input_features,
+    get_device, set_seed,
+    save_checkpoint, load_config,
+    time_start, time_stop, print_time,
+)
 
 import numpy as np
-from plots  import plot_loss_curve
+from plots import plot_loss_curve
 from report import start_run, log_epoch, end_training
+
+CONFIG_PATH = "configs/config.yaml"
+
+
+def compute_loss(model_out, labels, onsets, offsets,
+                 criterion_pitch, criterion_onset, criterion_offset,
+                 w_pitch, w_onset, w_offset, multi_output, device):
+    """
+    Calcola la loss totale.
+    Se multi_output=False, usa solo la loss del pitch.
+    """
+    logit_pitch, logit_onset, logit_offset = model_out
+
+    T = min(logit_pitch.size(1), labels.size(1))
+    logit_pitch = logit_pitch[:, :T, :]
+    labels      = labels[:, :T, :]
+
+    loss = w_pitch * criterion_pitch(logit_pitch, labels)
+
+    if multi_output:
+        logit_onset  = logit_onset[:, :T, :]
+        logit_offset = logit_offset[:, :T, :]
+        onsets       = onsets[:, :T, :]
+        offsets      = offsets[:, :T, :]
+        loss += w_onset  * criterion_onset(logit_onset,  onsets)
+        loss += w_offset * criterion_offset(logit_offset, offsets)
+
+    return loss
 
 
 def train():
 
     start_time = time_start()
-    config     = load_config()
+
+    config = load_config(CONFIG_PATH)
     start_run(config)
     set_seed(42)
 
-    device = get_device()
-    print(f"Training on: {device}")
+    device       = get_device()
+    feat_cfg     = config['features']
+    sr           = config['dataset']['sample_rate']
+    multi_output = config['model'].get('multi_output', False)
 
-    # ── Datasets ───────────────────────────────────────────────────────────
-    train_dataset = MaestroDataset(split='train')
-    val_dataset   = MaestroDataset(split='validation')
+    midi_min  = config['dataset']['midi_min']
+    midi_max  = config['dataset']['midi_max']
+    num_notes = midi_max - midi_min + 1   # 88
 
-    train_loader = DataLoader(train_dataset,
-                              batch_size=config['training']['batch_size'],
-                              shuffle=True, num_workers=0, pin_memory=True)
-    val_loader   = DataLoader(val_dataset,
-                              batch_size=config['training']['batch_size'],
-                              shuffle=False, num_workers=0, pin_memory=True)
+    print(f"Training on : {device}")
+    print(f"Feature type: {feat_cfg['type'].upper()}")
+    print(f"Multi-output: {multi_output}")
+    print(f"MIDI range  : {midi_min}-{midi_max}  ({num_notes} note)")
 
-    # ── Model ──────────────────────────────────────────────────────────────
+    # Augmentation
+    aug_cfg    = config.get('augmentation', {})
+    aug_config = aug_cfg if aug_cfg.get('enabled', False) else None
+    if aug_config:
+        print("Augmentation: ON")
+
+    # Dataset e DataLoader
+    train_dataset = MaestroDataset(
+        split='train',
+        aug_config=aug_config,
+        config_path=CONFIG_PATH,
+    )
+    val_dataset = MaestroDataset(
+        split='validation',
+        aug_config=None,      # mai augmentare la validation
+        config_path=CONFIG_PATH,
+    )
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=config['training']['batch_size'],
+        shuffle=True, num_workers=0,
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=config['training']['batch_size'],
+        shuffle=False, num_workers=0,
+    )
+
+    print(f"Tracce - train: {len(train_dataset)} | val: {len(val_dataset)}")
+
+    # Modello  (input_features derivato automaticamente dal tipo di feature)
+    input_features = get_input_features(feat_cfg, sr=sr)
+    print(f"input_features: {input_features}")
+
     model = PianoTranscriptArchitecture(
-        input_features=config['model']['input_features'],
-        dropout=config['model']['dropout']
+        input_features=input_features,
+        num_notes=num_notes,          # 88 per MAESTRO, indipendente dal tipo di feature
+        dropout=config['model']['dropout'],
+        hidden_size=config['model']['hidden_size'],
+        lstm_layers=config['model']['lstm_layers'],
     ).to(device)
 
-    # ── Loss ───────────────────────────────────────────────────────────────
-    pw_pitch  = torch.full((84,), config['training']['pos_weight']).to(device)
-    pw_onset  = torch.full((84,), config['training']['pos_weight_onset']).to(device)
-    pw_offset = torch.full((84,), config['training']['pos_weight_offset']).to(device)
+    # Loss  (pos_weight per num_notes note)
+    pw_pitch  = torch.ones(num_notes).to(device) * config['training']['pos_weight_pitch']
+    pw_onset  = torch.ones(num_notes).to(device) * config['training']['pos_weight_onset']
+    pw_offset = torch.ones(num_notes).to(device) * config['training']['pos_weight_offset']
 
-    crit_pitch  = nn.BCEWithLogitsLoss(pos_weight=pw_pitch)
-    crit_onset  = nn.BCEWithLogitsLoss(pos_weight=pw_onset)
-    crit_offset = nn.BCEWithLogitsLoss(pos_weight=pw_offset)
+    criterion_pitch  = nn.BCEWithLogitsLoss(pos_weight=pw_pitch)
+    criterion_onset  = nn.BCEWithLogitsLoss(pos_weight=pw_onset)
+    criterion_offset = nn.BCEWithLogitsLoss(pos_weight=pw_offset)
 
-    lw_onset  = config['training']['loss_weight_onset']
-    lw_offset = config['training']['loss_weight_offset']
+    w_pitch  = config['training']['loss_weight_pitch']
+    w_onset  = config['training']['loss_weight_onset']  if multi_output else 0.0
+    w_offset = config['training']['loss_weight_offset'] if multi_output else 0.0
+    grad_clip = config['training'].get('grad_clip', 1.0)
 
-    # ── Optimizer & Scheduler ──────────────────────────────────────────────
+    # Ottimizzatore e scheduler
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min',
         patience=config['training']['scheduler_patience'],
-        factor=config['training']['scheduler_factor']
+        factor=config['training']['scheduler_factor'],
     )
 
-    epochs      = config['training']['epochs']
-    best_loss   = float('inf')
-    train_losses, val_losses = [], []
+    epochs        = config['training']['epochs']
+    best_val_loss = float('inf')
+    train_losses  = []
+    val_losses    = []
 
-    # ── Training loop ──────────────────────────────────────────────────────
     for epoch in range(epochs):
-        t0         = time_start()
-        epoch_loss = 0.0
+        t_epoch = time_start()
 
+        # Train
         model.train()
+        epoch_loss = 0.0
         for batch in train_loader:
-            waveforms      = batch['waveform']
-            labels         = batch['labels'].to(device)
-            onset_labels   = batch['onset_labels'].to(device)
-            offset_labels  = batch['offset_labels'].to(device)
+            waveforms = batch["waveform"]
+            labels    = batch["labels"].to(device)
+            onsets    = batch["onsets"].to(device)
+            offsets   = batch["offsets"].to(device)
 
-            cqt_list = []
-            for wave in waveforms:
-                c = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
-                cqt_list.append(c)
-            inputs = torch.stack(cqt_list).to(device)
+            inputs = torch.stack(
+                [extract_features(w, feat_cfg, sr=sr) for w in waveforms]
+            ).to(device)
 
             optimizer.zero_grad()
-            out_pitch, out_onset, out_offset = model(inputs)
-
-            T = min(out_pitch.size(1), labels.size(1))
-            out_pitch  = out_pitch[:, :T, :]
-            out_onset  = out_onset[:, :T, :]
-            out_offset = out_offset[:, :T, :]
-            labels        = labels[:, :T, :]
-            onset_labels  = onset_labels[:, :T, :]
-            offset_labels = offset_labels[:, :T, :]
-
-            loss_pitch  = crit_pitch(out_pitch,  labels)
-            loss_onset  = crit_onset(out_onset,  onset_labels)
-            loss_offset = crit_offset(out_offset, offset_labels)
-            loss = loss_pitch + lw_onset * loss_onset + lw_offset * loss_offset
-
+            out  = model(inputs)
+            loss = compute_loss(out, labels, onsets, offsets,
+                                criterion_pitch, criterion_onset, criterion_offset,
+                                w_pitch, w_onset, w_offset, multi_output, device)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
             optimizer.step()
             epoch_loss += loss.item()
 
-        avg_train = epoch_loss / len(train_loader)
-        train_losses.append(avg_train)
+        avg_train_loss = epoch_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
 
-        # ── Validation ─────────────────────────────────────────────────────
+        # Validation
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
             for batch in val_loader:
-                waveforms      = batch['waveform']
-                labels         = batch['labels'].to(device)
-                onset_labels   = batch['onset_labels'].to(device)
-                offset_labels  = batch['offset_labels'].to(device)
+                waveforms = batch["waveform"]
+                labels    = batch["labels"].to(device)
+                onsets    = batch["onsets"].to(device)
+                offsets   = batch["offsets"].to(device)
 
-                cqt_list = []
-                for wave in waveforms:
-                    c = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
-                    cqt_list.append(c)
-                inputs = torch.stack(cqt_list).to(device)
+                inputs = torch.stack(
+                    [extract_features(w, feat_cfg, sr=sr) for w in waveforms]
+                ).to(device)
 
-                out_pitch, out_onset, out_offset = model(inputs)
+                out  = model(inputs)
+                loss = compute_loss(out, labels, onsets, offsets,
+                                    criterion_pitch, criterion_onset, criterion_offset,
+                                    w_pitch, w_onset, w_offset, multi_output, device)
+                val_loss += loss.item()
 
-                T = min(out_pitch.size(1), labels.size(1))
-                out_pitch  = out_pitch[:, :T, :]
-                out_onset  = out_onset[:, :T, :]
-                out_offset = out_offset[:, :T, :]
-                labels        = labels[:, :T, :]
-                onset_labels  = onset_labels[:, :T, :]
-                offset_labels = offset_labels[:, :T, :]
+        avg_val_loss = val_loss / len(val_loader)
+        val_losses.append(avg_val_loss)
 
-                loss_pitch  = crit_pitch(out_pitch,  labels)
-                loss_onset  = crit_onset(out_onset,  onset_labels)
-                loss_offset = crit_offset(out_offset, offset_labels)
-                val_loss += (loss_pitch + lw_onset * loss_onset + lw_offset * loss_offset).item()
+        scheduler.step(avg_val_loss)
 
-        avg_val = val_loss / len(val_loader)
-        val_losses.append(avg_val)
-        scheduler.step(avg_val)
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            save_checkpoint(
+                {
+                    'state_dict': model.state_dict(),
+                    'optimizer':  optimizer.state_dict(),
+                    'epoch':      epoch + 1,
+                    'loss':       best_val_loss,
+                },
+                filename=config['training']['checkpoint_path'],
+            )
+            print(f"  -> Nuovo best model (val_loss: {best_val_loss:.4f})")
 
-        # Early stopping on min LR
         current_lr = optimizer.param_groups[0]['lr']
-        if current_lr < config['training']['min_lr']:
-            print(f"LR {current_lr:.6f} below minimum. Early stopping.")
-            break
-
-        if avg_val < best_loss:
-            best_loss = avg_val
-            save_checkpoint({
-                'state_dict': model.state_dict(),
-                'optimizer':  optimizer.state_dict(),
-                'epoch':      epoch + 1,
-                'loss':       best_loss
-            }, filename=config['training']['checkpoint_path'])
-            print(f"Best model saved (val loss: {best_loss:.4f})")
-
-        duration = time_stop(t0)
-        print(f"Epoch {epoch+1}/{epochs} — Train: {avg_train:.4f}  Val: {avg_val:.4f}  LR: {current_lr:.6f}")
-        log_epoch(epoch, avg_train, avg_val, current_lr, duration)
+        epoch_time = time_stop(t_epoch)
+        print(f"Epoch {epoch+1}/{epochs}  |  "
+              f"Train: {avg_train_loss:.4f}  |  Val: {avg_val_loss:.4f}  |  "
+              f"LR: {current_lr:.6f}")
+        log_epoch(epoch, avg_train_loss, avg_val_loss, current_lr, epoch_time)
 
     print_time(time_stop(start_time))
     end_training()
 
-    np.save('checkpoints/train_losses.npy', np.array(train_losses))
-    np.save('checkpoints/val_losses.npy',   np.array(val_losses))
+    np.save('checkpoints/train_losses_maestro.npy', np.array(train_losses))
+    np.save('checkpoints/val_losses_maestro.npy',   np.array(val_losses))
     plot_loss_curve(train_losses, val_losses)
-    save_checkpoint({'state_dict': model.state_dict(),
-                     'optimizer':  optimizer.state_dict()},
-                    filename='final_model.pt')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     train()

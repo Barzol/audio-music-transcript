@@ -1,152 +1,187 @@
-# Phase 2 MAESTRO — evaluation script
-# Evaluates all three heads: pitch (primary), onset, offset
+# evaluate_maestro.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
+#
+# Differenze rispetto a evaluate.py (MusicNet):
+#   - Usa MaestroDataset invece di MusicNetPianoDataset
+#   - Carica configs/config_maestro.yaml
+#   - split 'test' per MAESTRO
+#   - NUM_NOTES = 88 (A0-C8)
+#   - Checkpoint: best_model_maestro.pt
 
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import precision_recall_fscore_support
-import numpy as np
 
 from dataset import MaestroDataset
-from model   import PianoTranscriptArchitecture
-from utils   import extract_cqt, get_device, load_checkpoint, load_config, generate_test_samples
+from model import PianoTranscriptArchitecture
+from utils import (
+    extract_features, get_input_features,
+    get_device, load_checkpoint, load_config,
+)
 
 from plots import (
     plot_precision_recall_threshold,
     plot_prob_distribution,
     plot_confusion_per_note,
-    plot_piano_roll
+    plot_piano_roll,
 )
 from report import log_metrics
+
+CONFIG_PATH = "configs/config.yaml"
+
+
+def compute_metrics(all_probs, all_labels, threshold, name=""):
+    preds = (all_probs >= threshold).astype(np.float32)
+
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        all_labels, preds, average='micro', zero_division=0
+    )
+    accuracy      = (all_labels == preds).mean()
+    max_prob      = all_probs.max()
+    mean_prob     = all_probs.mean()
+    active_preds  = preds.mean()
+    active_labels = all_labels.mean()
+
+    print(f"\n-- {name} (threshold={threshold}) ---------------")
+    print(f"  Max prob       : {max_prob:.4f}")
+    print(f"  Mean prob      : {mean_prob:.4f}")
+    print(f"  % active preds : {active_preds:.4f}")
+    print(f"  % active labels: {active_labels:.4f}")
+    print(f"  Accuracy       : {accuracy:.4f}")
+    print(f"  Precision      : {precision:.4f}")
+    print(f"  Recall         : {recall:.4f}")
+    print(f"  F1-Score       : {f1:.4f}")
+
+    return accuracy, precision, recall, f1, max_prob, mean_prob, active_preds, active_labels
 
 
 def evaluate():
 
-    config = load_config()
-    device = get_device()
-    print(f"Evaluation on: {device}")
+    config       = load_config(CONFIG_PATH)
+    device       = get_device()
+    feat_cfg     = config['features']
+    sr           = config['dataset']['sample_rate']
+    multi_output = config['model'].get('multi_output', False)
 
-    test_dataset = MaestroDataset(split='test')
-    test_loader  = DataLoader(test_dataset,
-                              batch_size=config['training']['batch_size'],
-                              shuffle=False, num_workers=0)
+    midi_min  = config['dataset']['midi_min']
+    midi_max  = config['dataset']['midi_max']
+    num_notes = midi_max - midi_min + 1   # 88
 
+    print(f"Evaluation on : {device}")
+    print(f"Feature type  : {feat_cfg['type'].upper()}")
+    print(f"Multi-output  : {multi_output}")
+    print(f"MIDI range    : {midi_min}-{midi_max}  ({num_notes} note)")
+
+    # Dataset
+    test_dataset = MaestroDataset(
+        split='test',
+        aug_config=None,
+        config_path=CONFIG_PATH,
+    )
+    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=0)
+
+    # Modello
+    input_features = get_input_features(feat_cfg, sr=sr)
     model = PianoTranscriptArchitecture(
-        input_features=config['model']['input_features'],
-        dropout=config['model']['dropout']
+        input_features=input_features,
+        num_notes=num_notes,          # 88 per MAESTRO
+        dropout=config['model']['dropout'],
+        hidden_size=config['model']['hidden_size'],
+        lstm_layers=config['model']['lstm_layers'],
     ).to(device)
 
-    load_checkpoint(config['evaluation']['checkpoint_path'], model, device=device)
+    load_checkpoint(f"checkpoints/{config['training']['checkpoint_path']}", model, device=device)
     model.eval()
 
-    all_pitch_probs  = []
-    all_onset_probs  = []
-    all_offset_probs = []
-    all_pitch_labels  = []
-    all_onset_labels  = []
-    all_offset_labels = []
+    # Raccolta predizioni
+    all_probs_pitch,  all_labels_pitch  = [], []
+    all_probs_onset,  all_labels_onset  = [], []
+    all_probs_offset, all_labels_offset = [], []
     track_info = []
 
     with torch.no_grad():
         for batch in test_loader:
-            waveforms      = batch['waveform']
-            labels         = batch['labels'].to(device)
-            onset_labels   = batch['onset_labels'].to(device)
-            offset_labels  = batch['offset_labels'].to(device)
-            track_ids      = batch['id']
+            waveforms = batch["waveform"]
+            labels    = batch["labels"].to(device)
+            onsets    = batch["onsets"].to(device)
+            offsets   = batch["offsets"].to(device)
+            track_ids = batch["id"]
 
-            cqt_list = [
-                extract_cqt(wave.squeeze(),
-                            hop_length=config['dataset']['hop_length']).float()
-                for wave in waveforms
-            ]
-            inputs = torch.stack(cqt_list).to(device)
+            inputs = torch.stack(
+                [extract_features(w, feat_cfg, sr=sr) for w in waveforms]
+            ).to(device)
 
-            out_pitch, out_onset, out_offset = model(inputs)
+            logit_pitch, logit_onset, logit_offset = model(inputs)
 
-            T = min(out_pitch.size(1), labels.size(1))
-            out_pitch  = out_pitch[:, :T, :]
-            out_onset  = out_onset[:, :T, :]
-            out_offset = out_offset[:, :T, :]
-            labels        = labels[:, :T, :]
-            onset_labels  = onset_labels[:, :T, :]
-            offset_labels = offset_labels[:, :T, :]
+            T = min(logit_pitch.size(1), labels.size(1))
+            logit_pitch = logit_pitch[:, :T, :]
+            labels      = labels[:, :T, :]
 
-            p_probs  = torch.sigmoid(out_pitch).cpu().numpy()
-            on_probs = torch.sigmoid(out_onset).cpu().numpy()
-            off_probs= torch.sigmoid(out_offset).cpu().numpy()
+            probs_pitch = torch.sigmoid(logit_pitch).cpu().numpy()
+            all_probs_pitch.append(probs_pitch.reshape(-1, num_notes))
+            all_labels_pitch.append(labels.cpu().numpy().reshape(-1, num_notes))
 
-            all_pitch_probs.append(p_probs.reshape(-1, 84))
-            all_onset_probs.append(on_probs.reshape(-1, 84))
-            all_offset_probs.append(off_probs.reshape(-1, 84))
-            all_pitch_labels.append(labels.cpu().numpy().reshape(-1, 84))
-            all_onset_labels.append(onset_labels.cpu().numpy().reshape(-1, 84))
-            all_offset_labels.append(offset_labels.cpu().numpy().reshape(-1, 84))
+            if multi_output:
+                logit_onset  = logit_onset[:, :T, :]
+                logit_offset = logit_offset[:, :T, :]
+                onsets       = onsets[:, :T, :]
+                offsets      = offsets[:, :T, :]
 
-            if len(track_info) < 3:
-                for i in range(len(track_ids)):
-                    if len(track_info) < 3:
-                        track_info.append({
-                            'id':     track_ids[i],
-                            'probs':  p_probs[i],
-                            'labels': labels[i].cpu().numpy()
-                        })
+                probs_onset  = torch.sigmoid(logit_onset).cpu().numpy()
+                probs_offset = torch.sigmoid(logit_offset).cpu().numpy()
+                all_probs_onset.append(probs_onset.reshape(-1, num_notes))
+                all_probs_offset.append(probs_offset.reshape(-1, num_notes))
+                all_labels_onset.append(onsets.cpu().numpy().reshape(-1, num_notes))
+                all_labels_offset.append(offsets.cpu().numpy().reshape(-1, num_notes))
 
-    if not all_pitch_probs:
-        print("Error: empty test set.")
+            for i in range(len(track_ids)):
+                track_info.append({
+                    'id':     track_ids[i],
+                    'probs':  probs_pitch[i],
+                    'labels': labels[i].cpu().numpy(),
+                })
+
+    if not all_probs_pitch:
+        print("Errore: nessun dato nel test set.")
         return
 
-    all_pitch_probs   = np.vstack(all_pitch_probs)
-    all_onset_probs   = np.vstack(all_onset_probs)
-    all_offset_probs  = np.vstack(all_offset_probs)
-    all_pitch_labels  = np.vstack(all_pitch_labels)
-    all_onset_labels  = np.vstack(all_onset_labels)
-    all_offset_labels = np.vstack(all_offset_labels)
+    all_probs_pitch  = np.vstack(all_probs_pitch)
+    all_labels_pitch = np.vstack(all_labels_pitch)
 
-    threshold        = config['evaluation']['threshold']
-    thresh_onset     = config['evaluation'].get('threshold_onset',  threshold)
-    thresh_offset    = config['evaluation'].get('threshold_offset', threshold)
+    thr_pitch  = config['evaluation']['threshold_pitch']
+    thr_onset  = config['evaluation']['threshold_onset']
+    thr_offset = config['evaluation']['threshold_offset']
 
-    pitch_preds  = (all_pitch_probs  >= threshold).astype(np.float32)
-    onset_preds  = (all_onset_probs  >= thresh_onset).astype(np.float32)
-    offset_preds = (all_offset_probs >= thresh_offset).astype(np.float32)
+    # Plot pitch
+    print("\nGenerazione plot...")
+    plot_precision_recall_threshold(all_probs_pitch, all_labels_pitch)
+    plot_prob_distribution(all_probs_pitch, all_labels_pitch)
+    plot_confusion_per_note(all_labels_pitch, all_probs_pitch, threshold=thr_pitch)
 
-    # Plots (pitch head)
-    print("\nGenerating plots...")
-    plot_precision_recall_threshold(all_pitch_probs, all_pitch_labels)
-    plot_prob_distribution(all_pitch_probs, all_pitch_labels)
-    plot_confusion_per_note(all_pitch_labels, all_pitch_probs, threshold=threshold)
-    generate_test_samples(track_info, plot_piano_roll, threshold)
+    for info in track_info:
+        plot_piano_roll(info['labels'], info['probs'],
+                        track_id=info['id'], threshold=thr_pitch)
 
-    # ── Metrics ────────────────────────────────────────────────────────────
-    def compute_f1(labels, preds):
-        p, r, f, _ = precision_recall_fscore_support(
-            labels, preds, average='micro', zero_division=0)
-        return p, r, f
+    # Metriche
+    print('\n====== Risultati MAESTRO Phase 3 – CNN + BiLSTM ======')
+    pitch_metrics = compute_metrics(all_probs_pitch, all_labels_pitch, thr_pitch, "PITCH")
 
-    p_p,  r_p,  f_p  = compute_f1(all_pitch_labels,  pitch_preds)
-    p_on, r_on, f_on = compute_f1(all_onset_labels,  onset_preds)
-    p_of, r_of, f_of = compute_f1(all_offset_labels, offset_preds)
+    if multi_output and all_probs_onset:
+        all_probs_onset   = np.vstack(all_probs_onset)
+        all_probs_offset  = np.vstack(all_probs_offset)
+        all_labels_onset  = np.vstack(all_labels_onset)
+        all_labels_offset = np.vstack(all_labels_offset)
+        onset_metrics  = compute_metrics(all_probs_onset,  all_labels_onset,  thr_onset,  "ONSET")
+        offset_metrics = compute_metrics(all_probs_offset, all_labels_offset, thr_offset, "OFFSET")
+    else:
+        onset_metrics  = (0, 0, 0, 0, 0, 0, 0, 0)
+        offset_metrics = (0, 0, 0, 0, 0, 0, 0, 0)
 
-    accuracy     = (all_pitch_labels == pitch_preds).mean()
-    max_prob     = all_pitch_probs.max()
-    mean_prob    = all_pitch_probs.mean()
-    active_preds = pitch_preds.mean()
-    active_labels= all_pitch_labels.mean()
+    print('=====================================================')
 
-    log_metrics(accuracy, p_p, r_p, f_p,
-                max_prob, mean_prob, active_preds, active_labels, threshold,
-                f1_onset=f_on, f1_offset=f_of)
-
-    print('\n--- Frame-Level Evaluation Results ---')
-    print(f"  Pitch  — P: {p_p:.4f}  R: {r_p:.4f}  F1: {f_p:.4f}")
-    print(f"  Onset  — P: {p_on:.4f}  R: {r_on:.4f}  F1: {f_on:.4f}")
-    print(f"  Offset — P: {p_of:.4f}  R: {r_of:.4f}  F1: {f_of:.4f}")
-    print(f"  Accuracy      : {accuracy:.4f}")
-    print(f"  Max prob      : {max_prob:.4f}")
-    print(f"  Mean prob     : {mean_prob:.4f}")
-    print(f"  % active preds: {active_preds:.4f}")
-    print(f"  % active labels:{active_labels:.4f}")
+    log_metrics(pitch_metrics, onset_metrics, offset_metrics,
+                thr_pitch, thr_onset, thr_offset)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     evaluate()

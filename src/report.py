@@ -1,17 +1,29 @@
-# Text logger for training and evaluation — Phase 2 MAESTRO
+# report.py  -  Phase 3: CNN + BiLSTM + Multi-Output
+#
+# Rispetto alla versione precedente:
+#   - Sezione [Features] nel log (type, hop_length, parametri specifici)
+#   - input_features derivato automaticamente via get_input_features()
+#   - multi_output e augmentation.enabled loggati
+#   - Filename include il tipo di feature: {timestamp}_{feat}_pwp{pw}_lr{lr}_hs{hs}.log
 
 from datetime import datetime
 from pathlib import Path
 
+from utils import load_config, get_input_features
+
 ROOT_DIR        = Path(__file__).parent.parent
 LOGS_DIR        = ROOT_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+
 ACTIVE_LOG_FILE = ROOT_DIR / "checkpoints" / "active_log.txt"
 
 
 def _get_log_path():
     if not ACTIVE_LOG_FILE.exists():
-        raise FileNotFoundError("No active log. Run --train before --evaluate.")
+        raise FileNotFoundError(
+            "No active log found.\n"
+            "Run --train before --evaluate."
+        )
     return Path(ACTIVE_LOG_FILE.read_text().strip())
 
 
@@ -21,106 +33,183 @@ def _write(log_path, text):
     print(text)
 
 
-def start_run(config):
-    timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    pos_weight = config['training'].get('pos_weight', 'N/A')
-    lr         = config['training']['learning_rate']
-    lw_on      = config['training'].get('loss_weight_onset', 'N/A')
-    lw_off     = config['training'].get('loss_weight_offset', 'N/A')
-    filename   = f"{timestamp}_pw{pos_weight}_lr{lr}_lwo{lw_on}.log"
+def start_run(config, dataset_name=None):
+    timestamp    = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    feat_cfg     = config.get('features', {})
+    feat_type    = feat_cfg.get('type', 'cqt')
+    sr           = config['dataset']['sample_rate']
+    pw_pitch     = config['training'].get('pos_weight_pitch', 'N/A')
+    lr           = config['training']['learning_rate']
+    hidden       = config['model'].get('hidden_size', 0)
 
-    log_path = LOGS_DIR / filename
+    # Prefisso dataset nel filename (es. "maestro_")
+    ds_prefix = f"{dataset_name.lower()}_" if dataset_name else ""
+    filename  = f"{timestamp}_{ds_prefix}{feat_type}_pwp{pw_pitch}_lr{lr}_hs{hidden}.log"
+    log_path  = LOGS_DIR / filename
+
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
 
+    # Deriva input_features automaticamente
+    try:
+        input_features = get_input_features(feat_cfg, sr=sr)
+    except Exception:
+        input_features = 'N/A'
+
+    dropout      = config['model']['dropout']
+    lstm_layers  = config['model'].get('lstm_layers', 'N/A')
+    multi_output = config['model'].get('multi_output', False)
+
+    pw_onset   = config['training'].get('pos_weight_onset',  'N/A')
+    pw_offset  = config['training'].get('pos_weight_offset', 'N/A')
+    lw_pitch   = config['training'].get('loss_weight_pitch',  'N/A')
+    lw_onset   = config['training'].get('loss_weight_onset',  'N/A')
+    lw_offset  = config['training'].get('loss_weight_offset', 'N/A')
+    grad_clip  = config['training'].get('grad_clip', 'N/A')
+
+    thr_pitch  = config['evaluation'].get('threshold_pitch',  'N/A')
+    thr_onset  = config['evaluation'].get('threshold_onset',  'N/A')
+    thr_offset = config['evaluation'].get('threshold_offset', 'N/A')
+
+    aug_cfg     = config.get('augmentation', {})
+    aug_enabled = aug_cfg.get('enabled', False)
+
+    # Riga riassuntiva parametri feature per il log
+    if feat_type == 'cqt':
+        feat_detail = f"cqt_bins={feat_cfg.get('cqt_bins', 84)}"
+    elif feat_type == 'stft':
+        feat_detail = (f"n_fft={feat_cfg.get('stft_n_fft', 2048)}, "
+                       f"fmin={feat_cfg.get('stft_fmin', 55.0)}, "
+                       f"fmax={feat_cfg.get('stft_fmax', 4200.0)}")
+    elif feat_type == 'mel':
+        feat_detail = (f"n_fft={feat_cfg.get('mel_n_fft', 2048)}, "
+                       f"n_mels={feat_cfg.get('mel_n_mels', 128)}")
+    else:
+        feat_detail = 'N/A'
+
+    ds_label = f"  Dataset : {dataset_name}" if dataset_name else ""
     lines = [
         "=" * 70,
-        "  EXPERIMENT LOG - MAESTRO Phase 2",
+        f"  EXPERIMENT LOG  -  Phase 3: CNN + BiLSTM",
         f"  Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"  File    : {filename}",
+    ]
+    if ds_label:
+        lines.append(ds_label)
+    lines += [
         "=" * 70,
         "",
         "-- HYPERPARAMETERS --------------------------------------------------",
         "",
+        "  [ Features ]",
+        f"  type               : {feat_type}",
+        f"  hop_length         : {feat_cfg.get('hop_length', 512)}",
+        f"  params             : {feat_detail}",
+        f"  input_features     : {input_features}",
+        "",
         "  [ Model ]",
-        f"  input_features     : {config['model']['input_features']}",
-        f"  dropout            : {config['model']['dropout']}",
+        f"  dropout            : {dropout}",
+        f"  hidden_size        : {hidden}",
+        f"  lstm_layers        : {lstm_layers}",
+        f"  multi_output       : {multi_output}",
         "",
         "  [ Training ]",
         f"  batch_size         : {config['training']['batch_size']}",
-        f"  learning_rate      : {config['training']['learning_rate']}",
+        f"  learning_rate      : {lr}",
         f"  epochs             : {config['training']['epochs']}",
-        f"  pos_weight (pitch) : {config['training'].get('pos_weight', 'N/A')}",
-        f"  pos_weight_onset   : {config['training'].get('pos_weight_onset', 'N/A')}",
-        f"  pos_weight_offset  : {config['training'].get('pos_weight_offset', 'N/A')}",
-        f"  loss_weight_onset  : {config['training'].get('loss_weight_onset', 'N/A')}",
-        f"  loss_weight_offset : {config['training'].get('loss_weight_offset', 'N/A')}",
+        f"  pos_weight_pitch   : {pw_pitch}",
+        f"  pos_weight_onset   : {pw_onset}",
+        f"  pos_weight_offset  : {pw_offset}",
+        f"  loss_weight_pitch  : {lw_pitch}",
+        f"  loss_weight_onset  : {lw_onset}",
+        f"  loss_weight_offset : {lw_offset}",
         f"  scheduler_patience : {config['training']['scheduler_patience']}",
         f"  scheduler_factor   : {config['training']['scheduler_factor']}",
-        f"  min_lr             : {config['training']['min_lr']}",
+        f"  grad_clip          : {grad_clip}",
         "",
         "  [ Dataset ]",
         f"  chunk_duration     : {config['dataset']['chunk_duration']} s",
-        f"  sample_rate        : {config['dataset']['sample_rate']} Hz",
-        f"  hop_length         : {config['dataset']['hop_length']}",
+        f"  sample_rate        : {sr} Hz",
+        f"  augmentation       : {'ON' if aug_enabled else 'OFF'}",
+        # Campi MAESTRO-specifici (omessi se non presenti)
+        *(
+            [
+                f"  midi_min           : {config['dataset']['midi_min']}",
+                f"  midi_max           : {config['dataset']['midi_max']}",
+                f"  num_notes          : {config['dataset']['midi_max'] - config['dataset']['midi_min'] + 1}",
+                f"  hop_length (ds)    : {config['dataset']['hop_length']}",
+            ]
+            if 'midi_min' in config.get('dataset', {}) else []
+        ),
         "",
         "  [ Evaluation ]",
-        f"  threshold          : {config['evaluation']['threshold']}",
+        f"  threshold_pitch    : {thr_pitch}",
+        f"  threshold_onset    : {thr_onset}",
+        f"  threshold_offset   : {thr_offset}",
         "",
         "-- TRAINING ---------------------------------------------------------",
         "",
-        f"  {'Epoch':<8} {'Train Loss':<12} {'Val Loss':<12} {'LR':<14} {'Time':<10}",
-        f"  {'-'*8} {'-'*12} {'-'*12} {'-'*14} {'-'*10}",
+        f"  {'Epoch':<8} {'Train Loss':<14} {'Val Loss':<14} {'LR':<14} {'Time':<10}",
+        f"  {'-'*8} {'-'*14} {'-'*14} {'-'*14} {'-'*10}",
     ]
 
     with open(log_path, 'w') as f:
         f.write("\n".join(lines) + "\n")
+
     print(f"Log file created: {log_path}")
     return str(log_path)
 
 
-def log_epoch(epoch, avg_loss, val_loss, current_lr, epoch_time=None):
+def log_epoch(epoch, train_loss, val_loss, current_lr, epoch_time=None):
     log_path = _get_log_path()
     time_str = f"{epoch_time:.1f}s" if epoch_time is not None else "N/A"
-    line     = f"  {epoch+1:<8} {avg_loss:<12.6f} {val_loss:<12.6f} {current_lr:<14.6f} {time_str:<10}"
+    line     = (f"  {epoch+1:<8} {train_loss:<14.6f} {val_loss:<14.6f} "
+                f"{current_lr:<14.6f} {time_str:<10}")
     _write(log_path, line)
 
 
 def end_training():
     log_path = _get_log_path()
-    lines = ["", "-- END OF TRAINING --------------------------------------------------", ""]
+    lines = [
+        "",
+        "-- END OF TRAINING --------------------------------------------------",
+        "",
+    ]
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
     print("Training phase logged.")
 
 
-def log_metrics(accuracy, precision, recall, f1,
-                max_prob, mean_prob, active_preds, active_labels, threshold,
-                f1_onset=None, f1_offset=None):
+def _format_metrics_block(name, metrics, threshold):
+    acc, prec, rec, f1, maxp, meanp, ap, al = metrics
+    return [
+        f"  [ {name} - threshold={threshold} ]",
+        f"  Accuracy       : {acc:.4f}",
+        f"  Precision      : {prec:.4f}",
+        f"  Recall         : {rec:.4f}",
+        f"  F1-Score       : {f1:.4f}",
+        f"  Max prob       : {maxp:.4f}",
+        f"  Mean prob      : {meanp:.4f}",
+        f"  % active preds : {ap:.4f}",
+        f"  % active labels: {al:.4f}",
+        "",
+    ]
 
+
+def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
+                thr_pitch, thr_onset, thr_offset):
     log_path = _get_log_path()
 
     lines = [
         "-- EVALUATION -------------------------------------------------------",
         "",
         f"  Evaluated at   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"  Threshold      : {threshold}",
         "",
-        "  [ Pitch ]",
-        f"  Accuracy       : {accuracy:.4f}",
-        f"  Precision      : {precision:.4f}",
-        f"  Recall         : {recall:.4f}",
-        f"  F1-Score       : {f1:.4f}",
-        "",
-        "  [ Onset / Offset ]",
-        f"  F1 Onset       : {f1_onset:.4f}"  if f1_onset  is not None else "  F1 Onset       : N/A",
-        f"  F1 Offset      : {f1_offset:.4f}" if f1_offset is not None else "  F1 Offset      : N/A",
-        "",
-        f"  Max prob       : {max_prob:.4f}",
-        f"  Mean prob      : {mean_prob:.4f}",
-        f"  % active preds : {active_preds:.4f}",
-        f"  % active labels: {active_labels:.4f}",
-        "",
+    ]
+    lines += _format_metrics_block("PITCH",  pitch_metrics,  thr_pitch)
+    lines += _format_metrics_block("ONSET",  onset_metrics,  thr_onset)
+    lines += _format_metrics_block("OFFSET", offset_metrics, thr_offset)
+    lines += [
         "=" * 70,
         "",
     ]

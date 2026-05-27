@@ -1,34 +1,83 @@
+# config.yaml  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
+
 dataset:
   csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
-  chunk_duration: 5.0
+  chunk_duration: 7.0
   sample_rate: 22050
-  hop_length: 256
-  midi_min: 33
-  midi_max: 116
+
+  # Parametri MAESTRO specifici (usati da dataset_maestro_phase3.py)
+  hop_length: 512
+  midi_min: 21    # A0 (MIDI 21) - range completo pianoforte
+  midi_max: 108   # C8 (MIDI 108)
+
+# Rappresentazione tempo-frequenza
+# type: cqt | stft | mel
+features:
+  type: cqt
+  hop_length: 512
+
+  # CQT - 88 bin logaritmici, A0-C8 (range completo pianoforte)
+  cqt_bins: 88
+
+  # STFT - range pianistico ritagliato (A0=27.5 Hz, C8~4200 Hz)
+  stft_n_fft: 1024
+  stft_fmin: 27.5
+  stft_fmax: 4200.0
+
+  # Mel
+  mel_n_fft: 2048
+  mel_n_mels: 128
 
 model:
-  input_features: 84
-  dropout: 0.4
-  hidden_size: 0
-  lstm_layers: 0
+  # multi_output: true  = allena pitch + onset + offset
+  #               false = solo pitch
+  multi_output: false
+  dropout: 0.3
+  hidden_size: 128
+  lstm_layers: 1
 
 training:
-  batch_size: 16
-  epochs: 75
+  batch_size: 8       # MAESTRO ha brani più lunghi, batch più piccolo
+  epochs: 80
   learning_rate: 0.001
-  scheduler_patience: 5
-  scheduler_factor: 0.5
-  pos_weight: 3.0
-  pos_weight_onset: 20.0
-  pos_weight_offset: 15.0
-  loss_weight_onset: 0.10
-  loss_weight_offset: 0.02
-  checkpoint_path: "best_model.pt"
-  min_lr: 0.00001
+
+  pos_weight_pitch:  4.0
+  pos_weight_onset:  25.0
+  pos_weight_offset: 25.0
+
+  loss_weight_pitch:  1.0
+  loss_weight_onset:  0.0
+  loss_weight_offset: 0.0
+
+  scheduler_patience: 12
+  scheduler_factor: 0.7
+  checkpoint_path: "best_model_maestro.pt"
+  grad_clip: 1.0
 
 evaluation:
-  checkpoint_path: "checkpoints/best_model.pt"
-  threshold: 0.4
-  threshold_onset: 0.3
-  threshold_offset: 0.4
+  threshold_pitch:  0.30
+  threshold_onset:  0.20
+  threshold_offset: 0.20
+
+# Data Augmentation
+augmentation:
+  enabled: false
+
+  pitch_shift_prob: 0.3
+  pitch_shift_max_steps: 2
+
+  detuning_prob: 0.2
+  detuning_max_steps: 0.5
+
+  gain_prob: 0.3
+  gain_min: 0.5
+  gain_max: 1.2
+
+  noise_prob: 0.2
+  noise_min: 0.001
+  noise_max: 0.005
+
+  reverb_prob: 0.2
+  reverb_rt60_min: 0.3
+  reverb_rt60_max: 1.5
