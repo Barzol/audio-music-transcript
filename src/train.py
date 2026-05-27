@@ -155,8 +155,8 @@ def train():
 
             if aug_config is not None:
                 augmented = []
-            for i in range(inputs.shape[0]):        #prendo uno spettrogramma
-                augmented.append(apply_spec_augment(inputs[i], aug_config))
+                for i in range(inputs.shape[0]):        #prendo uno spettrogramma
+                    augmented.append(apply_spec_augment(inputs[i], aug_config))
                 inputs = torch.stack(augmented)
 
             optimizer.zero_grad()
