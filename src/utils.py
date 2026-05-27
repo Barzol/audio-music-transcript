@@ -169,6 +169,46 @@ def get_input_features(feat_config, sr=22050):
 
     else:
         raise ValueError(f"Feature type sconosciuto: '{t}'.")
+        
+def apply_spec_augment(spec, aug_config):
+    """
+    Applica frequency masking e time masking allo spettrogramma.
+
+    spec       : FloatTensor di shape (time_frames, freq_bins)
+    aug_config : dict con i parametri (da config.yaml['augmentation'])
+
+    returns    : FloatTensor della stessa shape
+    """
+    if aug_config is None:
+        return spec
+
+    if random.random() >= aug_config.get('spec_augment_prob', 0.5):
+        return spec
+
+    spec = spec.clone()
+    num_frames, num_bins = spec.shape
+
+    # --- Frequency masking ---
+    if random.random() < aug_config.get('freq_mask_prob', 0.5):
+        max_width = aug_config.get('freq_mask_max_width', 8)
+        n_bands   = aug_config.get('freq_mask_max_bands', 2)
+
+        for _ in range(n_bands):
+            width = random.randint(1, max_width)
+            start = random.randint(0, max(0, num_bins - width))
+            spec[:, start:start + width] = 0.0
+
+    # --- Time masking ---
+    if random.random() < aug_config.get('time_mask_prob', 0.5):
+        max_width = aug_config.get('time_mask_max_width', 20)
+        n_bands   = aug_config.get('time_mask_max_bands', 2)
+
+        for _ in range(n_bands):
+            width = random.randint(1, max_width)
+            start = random.randint(0, max(0, num_frames - width))
+            spec[start:start + width, :] = 0.0
+
+    return spec
 
 
 # ── Timing ────────────────────────────────────────────────────────────────────

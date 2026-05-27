@@ -17,7 +17,7 @@ from utils import (
     extract_features, get_input_features,
     get_device, set_seed,
     save_checkpoint, load_config,
-    time_start, time_stop, print_time,
+    time_start, time_stop, print_time,apply_spec_augment
 )
 
 import numpy as np
@@ -50,7 +50,6 @@ def compute_loss(model_out, labels, onsets, offsets,
 
     return loss
 
-
 def train():
 
     start_time = time_start()
@@ -69,7 +68,7 @@ def train():
     print(f"Multi-output: {multi_output}")
 
     # Augmentation
-    aug_config    = config.get('augmentation', {})
+    aug_config = config.get('augmentation', {})
     aug_config = aug_config if aug_config.get('enabled', False) else None
     if aug_config:
         print("Augmentation: ON")
@@ -83,6 +82,7 @@ def train():
         sample_rate=sr,
         aug_config=aug_config,
     )
+
     val_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -149,9 +149,15 @@ def train():
             onsets    = batch["onsets"].to(device)
             offsets   = batch["offsets"].to(device)
 
-            inputs = torch.stack(
+            inputs = torch.stack(       #creo lo spettrogrammaq
                 [extract_features(w, feat_config, sr=sr) for w in waveforms]
             ).to(device)
+
+            if aug_config is not None:
+                augmented = []
+            for i in range(inputs.shape[0]):        #prendo uno spettrogramma
+                augmented.append(apply_spec_augment(inputs[i], aug_config))
+                inputs = torch.stack(augmented)
 
             optimizer.zero_grad()
             out  = model(inputs)
