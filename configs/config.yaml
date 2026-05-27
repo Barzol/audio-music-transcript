@@ -6,10 +6,10 @@ dataset:
   chunk_duration: 7.0
   sample_rate: 22050
 
-  # Parametri MAESTRO specifici (usati da dataset_maestro_phase3.py)
+  # Parametri MAESTRO-specifici
   hop_length: 512
-  midi_min: 21    # A0 (MIDI 21) - range completo pianoforte
-  midi_max: 108   # C8 (MIDI 108)
+  midi_min: 21    # A0 - range completo pianoforte
+  midi_max: 108   # C8
 
 # Rappresentazione tempo-frequenza
 # type: cqt | stft | mel
@@ -30,15 +30,13 @@ features:
   mel_n_mels: 128
 
 model:
-  # multi_output: true  = allena pitch + onset + offset
-  #               false = solo pitch
   multi_output: false
   dropout: 0.3
   hidden_size: 128
   lstm_layers: 1
 
 training:
-  batch_size: 8       # MAESTRO ha brani più lunghi, batch più piccolo
+  batch_size: 8
   epochs: 80
   learning_rate: 0.001
 
@@ -52,7 +50,7 @@ training:
 
   scheduler_patience: 12
   scheduler_factor: 0.7
-  checkpoint_path: "best_model_maestro.pt"
+  checkpoint_path: "best_model.pt"
   grad_clip: 1.0
 
 evaluation:
@@ -60,7 +58,6 @@ evaluation:
   threshold_onset:  0.20
   threshold_offset: 0.20
 
-# Data Augmentation
 augmentation:
   enabled: false
 

@@ -6,6 +6,7 @@
 #   - Chiavi restituite allineate con train.py/evaluate.py:
 #       'onset_labels' -> 'onsets'
 #       'offset_labels' -> 'offsets'
+#   - Path CSV e data_dir risolti relativi alla project root
 
 import torch
 import torchaudio
@@ -39,9 +40,13 @@ class MaestroDataset(Dataset):
         chunk_duration = chunk_duration or cfg['dataset']['chunk_duration']
         sample_rate    = sample_rate    or cfg['dataset']['sample_rate']
 
-        df = pd.read_csv(csv_file)
+        # Risolve i path relativi alla project root (src/../)
+        project_root  = Path(__file__).parent.parent
+        csv_path      = project_root / csv_file
+        self.data_dir = project_root / data_dir
+
+        df = pd.read_csv(csv_path)
         self.data          = df[df['split'] == split].reset_index(drop=True)
-        self.data_dir      = Path(data_dir)
         self.sample_rate   = sample_rate
         self.chunk_samples = int(chunk_duration * sample_rate)
 
@@ -56,8 +61,7 @@ class MaestroDataset(Dataset):
         NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
         frame_rate = sample_rate / HOP_LENGTH
 
-        # Pre-calcolo piano roll completo per ogni traccia (solo pitch)
-        # Onset e offset derivati on-the-fly in __getitem__
+        # Pre-calcolo piano roll completo per ogni traccia
         print("Pre-computing pitch piano rolls...")
         self.piano_rolls = {}
 
@@ -132,9 +136,6 @@ class MaestroDataset(Dataset):
             piano_roll = np.vstack([piano_roll, pad])
 
         # Onset / Offset derivati on-the-fly dal pitch roll
-        # onset[t]  = 1  quando pitch[t]=1 e pitch[t-1]=0
-        # offset[t] = 1  quando pitch[t]=1 e pitch[t+1]=0
-
         if label_start > 0 and label_start <= len(full_roll):
             prev_frame = full_roll[label_start - 1:label_start]
         else:
@@ -161,7 +162,6 @@ class MaestroDataset(Dataset):
             onset_roll  = self._shift_piano_roll(onset_roll,  pitch_shift_steps, NUM_NOTES)
             offset_roll = self._shift_piano_roll(offset_roll, pitch_shift_steps, NUM_NOTES)
 
-        # Normalizzazione DOPO augmentation
         max_val = torch.abs(waveform).max()
         if max_val > 0:
             waveform = waveform / max_val
@@ -175,7 +175,6 @@ class MaestroDataset(Dataset):
         }
 
     def _shift_piano_roll(self, piano_roll, n_steps, num_notes):
-        """Trasla le note di n_steps semitoni. Note fuori range scartate."""
         shifted = np.zeros_like(piano_roll)
         for note_idx in range(num_notes):
             new_idx = note_idx + n_steps
@@ -184,15 +183,9 @@ class MaestroDataset(Dataset):
         return shifted
 
     def _apply_augmentation(self, waveform):
-        """
-        Pitch shift (int) | detuning (float, mutualmente esclusivi),
-        gain, rumore gaussiano, reverb sintetico.
-        Restituisce (waveform, pitch_shift_steps).
-        """
         cfg = self.aug_config
         pitch_shift_steps = 0
 
-        # 1. Pitch shift / detuning
         if random.random() < cfg.get('pitch_shift_prob', 0.0):
             max_steps = int(cfg.get('pitch_shift_max_steps', 2))
             possible  = [s for s in range(-max_steps, max_steps + 1) if s != 0]
@@ -205,16 +198,13 @@ class MaestroDataset(Dataset):
             waveform = torchaudio.functional.pitch_shift(
                 waveform, sample_rate=self.sample_rate, n_steps=detuning)
 
-        # 2. Gain
         if random.random() < cfg.get('gain_prob', 0.0):
             waveform = waveform * random.uniform(cfg.get('gain_min', 0.5), cfg.get('gain_max', 1.2))
 
-        # 3. Rumore gaussiano
         if random.random() < cfg.get('noise_prob', 0.0):
             nl = random.uniform(cfg.get('noise_min', 0.001), cfg.get('noise_max', 0.005))
             waveform = waveform + nl * torch.randn_like(waveform)
 
-        # 4. Reverb sintetico
         if random.random() < cfg.get('reverb_prob', 0.0):
             rt60   = random.uniform(cfg.get('reverb_rt60_min', 0.3), cfg.get('reverb_rt60_max', 1.5))
             ir_len = int(rt60 * 1.2 * self.sample_rate)
@@ -228,11 +218,11 @@ class MaestroDataset(Dataset):
 
 
 if __name__ == '__main__':
-    config    = load_config("configs/config_maestro.yaml")
-    aug_cfg   = config.get('augmentation', {})
-    aug_conf  = aug_cfg if aug_cfg.get('enabled', False) else None
-    ds        = MaestroDataset(split='train', aug_config=aug_conf)
-    sample    = ds[0]
+    config   = load_config("configs/config.yaml")
+    aug_cfg  = config.get('augmentation', {})
+    aug_conf = aug_cfg if aug_cfg.get('enabled', False) else None
+    ds       = MaestroDataset(split='train', aug_config=aug_conf)
+    sample   = ds[0]
     print(f"Waveform : {sample['waveform'].shape}")
     print(f"Labels   : {sample['labels'].shape}   active={sample['labels'].mean():.4f}")
     print(f"Onsets   : {sample['onsets'].shape}   active={sample['onsets'].mean():.4f}")

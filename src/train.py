@@ -1,11 +1,4 @@
-# train_maestro.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Differenze rispetto a train.py (MusicNet):
-#   - Usa MaestroDataset invece di MusicNetPianoDataset
-#   - Carica configs/config_maestro.yaml
-#   - split 'validation' (non 'val') per MAESTRO
-#   - NUM_NOTES = midi_max - midi_min + 1 = 88 (range completo pianoforte)
-#   - checkpoint_path: "best_model_maestro.pt"
+# train.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
 
 import torch
 import torch.nn as nn
@@ -31,10 +24,6 @@ CONFIG_PATH = "configs/config.yaml"
 def compute_loss(model_out, labels, onsets, offsets,
                  criterion_pitch, criterion_onset, criterion_offset,
                  w_pitch, w_onset, w_offset, multi_output, device):
-    """
-    Calcola la loss totale.
-    Se multi_output=False, usa solo la loss del pitch.
-    """
     logit_pitch, logit_onset, logit_offset = model_out
 
     T = min(logit_pitch.size(1), labels.size(1))
@@ -59,7 +48,7 @@ def train():
     start_time = time_start()
 
     config = load_config(CONFIG_PATH)
-    start_run(config)
+    start_run(config, dataset_name="MAESTRO")
     set_seed(42)
 
     device       = get_device()
@@ -69,55 +58,39 @@ def train():
 
     midi_min  = config['dataset']['midi_min']
     midi_max  = config['dataset']['midi_max']
-    num_notes = midi_max - midi_min + 1   # 88
+    num_notes = midi_max - midi_min + 1
 
     print(f"Training on : {device}")
     print(f"Feature type: {feat_cfg['type'].upper()}")
     print(f"Multi-output: {multi_output}")
     print(f"MIDI range  : {midi_min}-{midi_max}  ({num_notes} note)")
 
-    # Augmentation
     aug_cfg    = config.get('augmentation', {})
     aug_config = aug_cfg if aug_cfg.get('enabled', False) else None
     if aug_config:
         print("Augmentation: ON")
 
-    # Dataset e DataLoader
-    train_dataset = MaestroDataset(
-        split='train',
-        aug_config=aug_config,
-        config_path=CONFIG_PATH,
-    )
-    val_dataset = MaestroDataset(
-        split='validation',
-        aug_config=None,      # mai augmentare la validation
-        config_path=CONFIG_PATH,
-    )
+    train_dataset = MaestroDataset(split='train',      aug_config=aug_config, config_path=CONFIG_PATH)
+    val_dataset   = MaestroDataset(split='validation', aug_config=None,       config_path=CONFIG_PATH)
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=config['training']['batch_size'],
-        shuffle=True, num_workers=0,
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=config['training']['batch_size'],
-        shuffle=False, num_workers=0,
-    )
+    train_loader = DataLoader(train_dataset, batch_size=config['training']['batch_size'],
+                              shuffle=True,  num_workers=0)
+    val_loader   = DataLoader(val_dataset,   batch_size=config['training']['batch_size'],
+                              shuffle=False, num_workers=0)
 
     print(f"Tracce - train: {len(train_dataset)} | val: {len(val_dataset)}")
 
-    # Modello  (input_features derivato automaticamente dal tipo di feature)
     input_features = get_input_features(feat_cfg, sr=sr)
-    print(f"input_features: {input_features}")
+    print(f"input_features: {input_features}  |  num_notes: {num_notes}")
 
     model = PianoTranscriptArchitecture(
         input_features=input_features,
-        num_notes=num_notes,          # 88 per MAESTRO, indipendente dal tipo di feature
+        num_notes=num_notes,
         dropout=config['model']['dropout'],
         hidden_size=config['model']['hidden_size'],
         lstm_layers=config['model']['lstm_layers'],
     ).to(device)
 
-    # Loss  (pos_weight per num_notes note)
     pw_pitch  = torch.ones(num_notes).to(device) * config['training']['pos_weight_pitch']
     pw_onset  = torch.ones(num_notes).to(device) * config['training']['pos_weight_onset']
     pw_offset = torch.ones(num_notes).to(device) * config['training']['pos_weight_offset']
@@ -126,12 +99,11 @@ def train():
     criterion_onset  = nn.BCEWithLogitsLoss(pos_weight=pw_onset)
     criterion_offset = nn.BCEWithLogitsLoss(pos_weight=pw_offset)
 
-    w_pitch  = config['training']['loss_weight_pitch']
-    w_onset  = config['training']['loss_weight_onset']  if multi_output else 0.0
-    w_offset = config['training']['loss_weight_offset'] if multi_output else 0.0
+    w_pitch   = config['training']['loss_weight_pitch']
+    w_onset   = config['training']['loss_weight_onset']  if multi_output else 0.0
+    w_offset  = config['training']['loss_weight_offset'] if multi_output else 0.0
     grad_clip = config['training'].get('grad_clip', 1.0)
 
-    # Ottimizzatore e scheduler
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min',
@@ -147,7 +119,6 @@ def train():
     for epoch in range(epochs):
         t_epoch = time_start()
 
-        # Train
         model.train()
         epoch_loss = 0.0
         for batch in train_loader:
@@ -173,7 +144,6 @@ def train():
         avg_train_loss = epoch_loss / len(train_loader)
         train_losses.append(avg_train_loss)
 
-        # Validation
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -221,8 +191,8 @@ def train():
     print_time(time_stop(start_time))
     end_training()
 
-    np.save('checkpoints/train_losses_maestro.npy', np.array(train_losses))
-    np.save('checkpoints/val_losses_maestro.npy',   np.array(val_losses))
+    np.save('checkpoints/train_losses.npy', np.array(train_losses))
+    np.save('checkpoints/val_losses.npy',   np.array(val_losses))
     plot_loss_curve(train_losses, val_losses)
 
 

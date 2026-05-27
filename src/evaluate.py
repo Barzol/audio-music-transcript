@@ -1,11 +1,4 @@
-# evaluate_maestro.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Differenze rispetto a evaluate.py (MusicNet):
-#   - Usa MaestroDataset invece di MusicNetPianoDataset
-#   - Carica configs/config_maestro.yaml
-#   - split 'test' per MAESTRO
-#   - NUM_NOTES = 88 (A0-C8)
-#   - Checkpoint: best_model_maestro.pt
+# evaluate.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
 
 import torch
 import numpy as np
@@ -18,7 +11,6 @@ from utils import (
     extract_features, get_input_features,
     get_device, load_checkpoint, load_config,
 )
-
 from plots import (
     plot_precision_recall_threshold,
     plot_prob_distribution,
@@ -65,26 +57,20 @@ def evaluate():
 
     midi_min  = config['dataset']['midi_min']
     midi_max  = config['dataset']['midi_max']
-    num_notes = midi_max - midi_min + 1   # 88
+    num_notes = midi_max - midi_min + 1
 
     print(f"Evaluation on : {device}")
     print(f"Feature type  : {feat_cfg['type'].upper()}")
     print(f"Multi-output  : {multi_output}")
     print(f"MIDI range    : {midi_min}-{midi_max}  ({num_notes} note)")
 
-    # Dataset
-    test_dataset = MaestroDataset(
-        split='test',
-        aug_config=None,
-        config_path=CONFIG_PATH,
-    )
-    test_loader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=0)
+    test_dataset = MaestroDataset(split='test', aug_config=None, config_path=CONFIG_PATH)
+    test_loader  = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=0)
 
-    # Modello
     input_features = get_input_features(feat_cfg, sr=sr)
     model = PianoTranscriptArchitecture(
         input_features=input_features,
-        num_notes=num_notes,          # 88 per MAESTRO
+        num_notes=num_notes,
         dropout=config['model']['dropout'],
         hidden_size=config['model']['hidden_size'],
         lstm_layers=config['model']['lstm_layers'],
@@ -93,7 +79,6 @@ def evaluate():
     load_checkpoint(f"checkpoints/{config['training']['checkpoint_path']}", model, device=device)
     model.eval()
 
-    # Raccolta predizioni
     all_probs_pitch,  all_labels_pitch  = [], []
     all_probs_onset,  all_labels_onset  = [], []
     all_probs_offset, all_labels_offset = [], []
@@ -152,17 +137,16 @@ def evaluate():
     thr_onset  = config['evaluation']['threshold_onset']
     thr_offset = config['evaluation']['threshold_offset']
 
-    # Plot pitch
     print("\nGenerazione plot...")
     plot_precision_recall_threshold(all_probs_pitch, all_labels_pitch)
     plot_prob_distribution(all_probs_pitch, all_labels_pitch)
-    plot_confusion_per_note(all_labels_pitch, all_probs_pitch, threshold=thr_pitch)
+    plot_confusion_per_note(all_labels_pitch, all_probs_pitch,
+                            threshold=thr_pitch, midi_min=midi_min)
 
     for info in track_info:
         plot_piano_roll(info['labels'], info['probs'],
-                        track_id=info['id'], threshold=thr_pitch)
+                        track_id=info['id'], threshold=thr_pitch, midi_min=midi_min)
 
-    # Metriche
     print('\n====== Risultati MAESTRO Phase 3 – CNN + BiLSTM ======')
     pitch_metrics = compute_metrics(all_probs_pitch, all_labels_pitch, thr_pitch, "PITCH")
 
@@ -178,7 +162,6 @@ def evaluate():
         offset_metrics = (0, 0, 0, 0, 0, 0, 0, 0)
 
     print('=====================================================')
-
     log_metrics(pitch_metrics, onset_metrics, offset_metrics,
                 thr_pitch, thr_onset, thr_offset)
 
