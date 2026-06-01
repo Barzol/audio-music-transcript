@@ -190,20 +190,6 @@ class MusicNetPianoDataset(Dataset):
 
         return waveform, pitch_shift_steps
 
-    # SpecAugment — applicato sullo spettrogramma, non sul waveform
-    spec_augment_prob: 0.5
-  
-    # Frequency masking
-    freq_mask_prob: 0.5
-    freq_mask_max_bands: 2        # quante maschere applicare
-    freq_mask_max_width: 8        # larghezza massima in bin
-        
-    # Time masking  
-    time_mask_prob: 0.5
-    time_mask_max_bands: 2
-    time_mask_max_width: 20       # larghezza massima in frame
-
-
 if __name__ == "__main__":
     config    = load_config("configs/config.yaml")
     augconfig   = config.get('augmentation', {})

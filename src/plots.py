@@ -120,6 +120,7 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     binary_preds = (preds >= threshold).astype(np.float32)
     time_frames  = labels.shape[0]
+    num_notes    = labels.shape[1]
     rgb = np.zeros((84, time_frames, 3), dtype=np.float32)
 
     gt   = labels.T.astype(bool)
@@ -131,10 +132,13 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
 
     fn = gt & ~pred
     rgb[fn, 2] = 0.9
-
+    
+    fp = ~gt & pred  
+    rgb[fp, 0] = 0.9
+    
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.imshow(rgb, aspect='auto', origin='lower',
-              extent=[0, time_frames, MIDI_MIN, MIDI_MAX])
+              extent=[0, time_frames, 0, num_notes])
 
     c_notes = [m for m in range(MIDI_MIN, MIDI_MAX + 1) if (m % 12) == 0]
     ax.set_yticks([m - MIDI_MIN for m in c_notes])
