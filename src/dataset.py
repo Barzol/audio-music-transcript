@@ -24,7 +24,8 @@ class MaestroDataset(Dataset):
                  data_dir=None,
                  split='train',
                  chunk_duration=None,
-                 sample_rate=None):
+                 sample_rate=None,
+                 val_seed=42):
 
         cfg = self.config
         csv_file       = csv_file       or cfg['dataset']['csv_file']
@@ -35,8 +36,10 @@ class MaestroDataset(Dataset):
         df = pd.read_csv(csv_file)
         self.data      = df[df['split'] == split].reset_index(drop=True)
         self.data_dir  = Path(data_dir)
-        self.sample_rate   = sample_rate
-        self.chunk_samples = int(chunk_duration * sample_rate)
+        self.split          = split
+        self.sample_rate    = sample_rate
+        self.chunk_duration = chunk_duration
+        self.chunk_samples  = int(chunk_duration * sample_rate)
 
         print(f"Dataset '{split}' loaded: {len(self.data)} tracks.")
 
@@ -71,12 +74,39 @@ class MaestroDataset(Dataset):
 
         print("Piano rolls ready.")
 
+        # --- FIX 1: indice (track_idx, chunk_idx) ---
+        self.index = []
+        self._orig_sr_cache = {}
+
+        for row_idx, row in self.data.iterrows():
+            wav_path = self.data_dir / row['audio_filename']
+            info     = sf.info(wav_path)
+
+            self._orig_sr_cache[row_idx] = info.samplerate
+            orig_chunk_samples = int(self.chunk_samples * info.samplerate / self.sample_rate)
+            n_chunks = max(1, info.frames // orig_chunk_samples)
+
+            for chunk_idx in range(n_chunks):
+                self.index.append((row_idx, chunk_idx))
+
+        # --- FIX 2: start_frame fisso per split non-train ---
+        self.fixed_start_frames = {}
+        if split != 'train':
+            val_rng = random.Random(val_seed)
+            for row_idx, chunk_idx in self.index:
+                orig_sr = self._orig_sr_cache[row_idx]
+                orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+                base = chunk_idx * orig_chunk_samples
+                jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
+                self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
+
     def __len__(self):
-        return len(self.data)
+        return len(self.index)
 
     def __getitem__(self, idx):
         cfg      = self.config
-        row      = self.data.iloc[idx]
+        row_idx, chunk_idx = self.index[idx]
+        row      = self.data.iloc[row_idx]
         track_id = Path(row['audio_filename']).stem
         wav_path = self.data_dir / row['audio_filename']
 
@@ -86,7 +116,13 @@ class MaestroDataset(Dataset):
         orig_sr            = info.samplerate
         orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
 
-        start_frame = random.randint(0, max(0, total_samples - orig_chunk_samples))
+        if self.split == 'train':
+            start_frame = random.randint(0, max(0, total_samples - orig_chunk_samples))
+        else:
+            start_frame = min(
+                self.fixed_start_frames[(row_idx, chunk_idx)],
+                max(0, total_samples - orig_chunk_samples)
+            )
 
         with sf.SoundFile(wav_path) as f:
             f.seek(start_frame)
@@ -156,6 +192,7 @@ class MaestroDataset(Dataset):
 
 if __name__ == '__main__':
     ds     = MaestroDataset(split='train')
+    print(f"Chunk di training: {len(ds)}")
     sample = ds[0]
     print(f"Waveform : {sample['waveform'].shape}")
     print(f"Pitch    : {sample['labels'].shape}  active={sample['labels'].mean():.4f}")
