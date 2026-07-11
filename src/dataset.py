@@ -1,8 +1,9 @@
 # This file defines the Dataset Class
 # 3 methods :
 #   - __init__ : loads metadata and stores configuration
-#   - __len__ : returns the number of tracks in the train/test split
-#   - __getitem__ : loads a random 5 second audio chunk and its aligned labels
+#   - __len__ : returns the number of chunks across all tracks in the split
+#   - __getitem__ : loads a (deterministic if not train) 5 second audio chunk
+#                    and its aligned labels
 
 import torch
 import torchaudio
@@ -18,9 +19,12 @@ class MusicNetPianoDataset(Dataset):
     '''
     csv_file        : path to the csv
     data_dir        : root directory of data
-    split           : train or test
+    split           : train, val or test
     chunk_duration  : length in seconds of each audio chunk
     sample_rate     : audio sample rate
+    val_seed        : seed used to precompute deterministic chunks for
+                       non-train splits, so validation/test always see
+                       the same audio segment across epochs
     '''
 
     def __init__(self, 
@@ -28,27 +32,63 @@ class MusicNetPianoDataset(Dataset):
                  data_dir="data/raw", 
                  split='train', 
                  chunk_duration=5.0, 
-                 sample_rate=22050
+                 sample_rate=22050,
+                 val_seed=42
                  ):
         
         project_root = Path(__file__).parent.parent
         csv_path = project_root / csv_file
         self.data_dir = project_root / data_dir
 
-        # Reads the .csv and filters only for 'train' and 'test'
+        # Reads the .csv and filters only for 'train' / 'val' / 'test'
         df = pd.read_csv(csv_path)
         self.data = df[df['split'] == split].reset_index(drop=True)
 
         # store configuration so __getitem__ can access them
         self.data_dir = Path(__file__).parent.parent / data_dir
+        self.split = split
         self.sample_rate = sample_rate
+        self.chunk_duration = chunk_duration
 
         # computes how many audio samples correspond to one chunk
         self.chunk_samples = int(chunk_duration * sample_rate)
 
+        # --- FIX 1: build an index of (track_idx, chunk_idx) instead of
+        # relying on one random chunk per track. Each track contributes
+        # as many non-overlapping chunks as fit in its duration. ---
+        self.index = []
+        self._orig_sr_cache = {}
+
+        for row_idx, row in self.data.iterrows():
+            track_id = str(row['id'])
+            wav_path = self.data_dir / "wav" / f"{track_id}.wav"
+
+            with sf.SoundFile(wav_path) as f:
+                total_samples = len(f)
+                orig_sr = f.samplerate
+
+            self._orig_sr_cache[row_idx] = orig_sr
+            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+            n_chunks = max(1, total_samples // orig_chunk_samples)
+
+            for chunk_idx in range(n_chunks):
+                self.index.append((row_idx, chunk_idx))
+
+        # --- FIX 2: for val/test, precompute fixed start frames once,
+        # with a seeded RNG, so every epoch reads the same segment. ---
+        self.fixed_start_frames = {}
+        if split != 'train':
+            val_rng = random.Random(val_seed)
+            for row_idx, chunk_idx in self.index:
+                orig_sr = self._orig_sr_cache[row_idx]
+                orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+                base = chunk_idx * orig_chunk_samples
+                jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
+                self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
+
 # ---------------------------------------------------------------------------
     def __len__(self):
-        return len(self.data)
+        return len(self.index)
 
 # ---------------------------------------------------------------------------
 
@@ -64,7 +104,8 @@ class MusicNetPianoDataset(Dataset):
         '''
 
         # retrieve metadata
-        row = self.data.iloc[idx]
+        row_idx, chunk_idx = self.index[idx]
+        row = self.data.iloc[row_idx]
 
         track_id = str(row['id'])
 
@@ -74,23 +115,30 @@ class MusicNetPianoDataset(Dataset):
 
         # ---------- Audio loading ----------
 
-
         # soundfile reads only the file header
         with sf.SoundFile(wav_path) as f:
             total_samples = len(f)      # total number of samples of the file
             orig_sr = f.samplerate    # original sr
 
-        # choose a random point for extracting 5 seconds
-        if total_samples > self.chunk_samples:
-            start_frame = random.randint(0, total_samples - self.chunk_samples)
-        else:
-            start_frame = 0
+        orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
 
-        # load only the 5-second chunk 
+        if self.split == 'train':
+            # random on-the-fly: fine for train, adds diversity across epochs
+            if total_samples > orig_chunk_samples:
+                start_frame = random.randint(0, total_samples - orig_chunk_samples)
+            else:
+                start_frame = 0
+        else:
+            # deterministic: same chunk every time (fix 2)
+            start_frame = min(
+                self.fixed_start_frames[(row_idx, chunk_idx)],
+                max(0, total_samples - orig_chunk_samples)
+            )
+
+        # load only the chunk
         # 'with' calls automatically two methods
         with sf.SoundFile(wav_path) as f:
             f.seek(start_frame)
-            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
             chunk_np = f.read(
                 orig_chunk_samples, 
                 dtype='float32', 
@@ -180,11 +228,10 @@ if __name__ == "__main__":
 
     dataset = MusicNetPianoDataset(split="train")
     print("------- TEST ------- ")
-    print(f"Tracce di training trovate: {len(dataset)}")
+    print(f"Chunk di training trovati: {len(dataset)}")
 
     if len(dataset) > 0:
         sample = dataset[0]
         print(f"Waveform shape : {sample['waveform'].shape}")   # expect (1, 110250)
         print(f"Labels shape   : {sample['labels'].shape}")     # expect (215, num_pitches)
         print(f"Track id       : {sample['id']}")
-    
