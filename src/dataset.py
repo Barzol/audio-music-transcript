@@ -1,8 +1,9 @@
 # This file defines the Dataset Class
 # 3 methods :
 #   - __init__ : loads metadata and stores configuration
-#   - __len__ : returns the number of tracks in the train/test split
-#   - __getitem__ : loads a random 5 second audio chunk and its aligned labels
+#   - __len__ : returns the number of chunks across all tracks in the split
+#   - __getitem__ : loads a (deterministic if not train) audio chunk
+#                    and its aligned labels
 
 import torch
 import torchaudio
@@ -24,6 +25,9 @@ class MaestroDataset(Dataset):
     split           : train or test
     chunk_duration  : length in seconds of each audio chunk
     sample_rate     : audio sample rate
+    val_seed        : seed used to precompute deterministic chunks for
+                       non-train splits, so validation/test always see
+                       the same audio segment across epochs
     '''
     
     config = load_config()
@@ -34,6 +38,7 @@ class MaestroDataset(Dataset):
                  split='train', 
                  chunk_duration=config["dataset"]["chunk_duration"], 
                  sample_rate=config["dataset"]["sample_rate"],
+                 val_seed=42,
                  ):
         
         # csv from absolute path in config
@@ -46,8 +51,10 @@ class MaestroDataset(Dataset):
         self.data_dir = Path(data_dir)
         
         # parameters
-        self.sample_rate = sample_rate
-        self.chunk_samples = int(chunk_duration * sample_rate)
+        self.split          = split
+        self.sample_rate    = sample_rate
+        self.chunk_duration = chunk_duration
+        self.chunk_samples  = int(chunk_duration * sample_rate)
 
         print(f"Dataset {split} loaded: {len(self.data)} tracks.")
         
@@ -79,9 +86,35 @@ class MaestroDataset(Dataset):
  
         print("Piano rolls ready.")
 
+        # --- FIX 1: indice (track_idx, chunk_idx) ---
+        self.index = []
+        self._orig_sr_cache = {}
+
+        for row_idx, row in self.data.iterrows():
+            wav_path = self.data_dir / row['audio_filename']
+            info     = sf.info(wav_path)
+
+            self._orig_sr_cache[row_idx] = info.samplerate
+            orig_chunk_samples = int(self.chunk_samples * info.samplerate / self.sample_rate)
+            n_chunks = max(1, info.frames // orig_chunk_samples)
+
+            for chunk_idx in range(n_chunks):
+                self.index.append((row_idx, chunk_idx))
+
+        # --- FIX 2: start_frame fisso per split non-train ---
+        self.fixed_start_frames = {}
+        if split != 'train':
+            val_rng = random.Random(val_seed)
+            for row_idx, chunk_idx in self.index:
+                orig_sr = self._orig_sr_cache[row_idx]
+                orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+                base = chunk_idx * orig_chunk_samples
+                jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
+                self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
+
 # ---------------------------------------------------------------------------
     def __len__(self):
-        return len(self.data)
+        return len(self.index)
 
 # ---------------------------------------------------------------------------
 
@@ -97,7 +130,8 @@ class MaestroDataset(Dataset):
         '''
 
         # retrieve metadata
-        row = self.data.iloc[idx]
+        row_idx, chunk_idx = self.index[idx]
+        row = self.data.iloc[row_idx]
 
         track_id = Path(row['audio_filename']).stem
 
@@ -111,13 +145,20 @@ class MaestroDataset(Dataset):
 
         orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
 
-        # choose a random point for extracting 5 seconds
-        if total_samples > orig_chunk_samples:
-            start_frame = random.randint(0, total_samples - orig_chunk_samples)
+        if self.split == 'train':
+            # random on-the-fly: fine for train, adds diversity across epochs
+            if total_samples > orig_chunk_samples:
+                start_frame = random.randint(0, total_samples - orig_chunk_samples)
+            else:
+                start_frame = 0
         else:
-            start_frame = 0
+            # deterministic: same chunk every time (fix 2)
+            start_frame = min(
+                self.fixed_start_frames[(row_idx, chunk_idx)],
+                max(0, total_samples - orig_chunk_samples)
+            )
 
-        # load only the 5-second chunk 
+        # load only the chunk
         # 'with' calls automatically two methods
         with sf.SoundFile(wav_path) as f:
             f.seek(start_frame)
@@ -179,6 +220,7 @@ if __name__ == "__main__":
     # insert here
 
     dataset = MaestroDataset(split="train")
+    print(f"Chunk di training: {len(dataset)}")
     sample  = dataset[0]
  
     labels   = sample['labels']
