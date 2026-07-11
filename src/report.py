@@ -4,11 +4,15 @@
 # run_id is saved between --train and --evaluate so they 
 # can be called separately but write to the same log file.
 #
+# AGGIORNAMENTO: log_epoch ora accetta e stampa anche val_loss
+# (stessa logica di Fase 2, adattata all'output singolo pitch)
+#
 # functions :
-#   start_run(config)           : creates the log file, writes hyperparameters
-#   log_epoch(epoch, loss, lr)  : appends one line per epoch
-#   end_training()              : writes a separator at the end of training
-#   log_metrics(...)            : appends evaluation metrics to the log file
+#   start_run(config)                      : creates the log file, writes hyperparameters
+#   log_epoch(epoch, train_loss, val_loss,
+#             lr, epoch_time)              : appends one line per epoch
+#   end_training()                         : writes a separator at the end of training
+#   log_metrics(...)                       : appends evaluation metrics to the log file
 
 import json
 from datetime import datetime
@@ -107,8 +111,8 @@ def start_run(config):
         "",
         "-- TRAINING ---------------------------------------------------------",
         "",
-        f"  {'Epoch':<8} {'Loss':<12} {'LR':<14} {'Time':<10}",
-        f"  {'-'*8} {'-'*12} {'-'*14} {'-'*10}",
+        f"  {'Epoch':<8} {'Train Loss':<14} {'Val Loss':<14} {'LR':<14} {'Time':<10}",
+        f"  {'-'*8} {'-'*14} {'-'*14} {'-'*14} {'-'*10}",
     ]
 
     with open(log_path, 'w') as f:
@@ -124,11 +128,12 @@ def start_run(config):
     Appends a line of text in the log for the current epoch
     called at the end of each epoch
 '''
-def log_epoch(epoch, avg_loss, current_lr, epoch_time=None):
+def log_epoch(epoch, train_loss, val_loss, current_lr, epoch_time=None):
 
     log_path  = _get_log_path()
     time_str  = f"{epoch_time:.1f}s" if epoch_time is not None else "N/A"
-    line      = f"  {epoch+1:<8} {avg_loss:<12.6f} {current_lr:<14.6f} {time_str:<10}"
+    line      = (f"  {epoch+1:<8} {train_loss:<14.6f} {val_loss:<14.6f} "
+                 f"{current_lr:<14.6f} {time_str:<10}")
     _write(log_path, line)
 
 

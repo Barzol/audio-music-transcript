@@ -6,6 +6,12 @@
 # Legge gli iperparametri da configs/config.yaml,
 # carica il dataset MusicNet (solo pianoforte),
 # estrae le feature CQT e allena la BaselineCNN.
+#
+# AGGIORNAMENTO: aggiunta validation (stessa logica della Fase 2)
+#   - split='val' separato, DataLoader con shuffle=False
+#   - loop di validazione a fine epoca (model.eval() + no_grad())
+#   - lo scheduler monitora val_loss invece di train_loss
+#   - il checkpoint si salva sul minimo di val_loss
 
 import torch
 import torch.nn as nn
@@ -50,13 +56,25 @@ def train():
         chunk_duration=config['dataset']['chunk_duration'],
         sample_rate=config['dataset']['sample_rate'],
     )
-    
-    print(f"Tracce di training trovate: {len(train_dataset)}")
+    val_dataset = MusicNetPianoDataset(
+        csv_file=config['dataset']['csv_file'],
+        data_dir=config['dataset']['data_dir'],
+        split='val',
+        chunk_duration=config['dataset']['chunk_duration'],
+        sample_rate=config['dataset']['sample_rate'],
+    )
+
+    print(f"Chunk — train: {len(train_dataset)} | val: {len(val_dataset)}")
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['training']['batch_size'],
         shuffle=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config['training']['batch_size'],
+        shuffle=False,
     )
 
     # ── Modello ──────────────────────────────────────────────────────────────
@@ -78,7 +96,7 @@ def train():
         lr=config['training']['learning_rate'],
     )
 
-    # Dimezza il LR se la loss non migliora per N epoche
+    # Dimezza il LR se la val_loss non migliora per N epoche
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode='min',
@@ -86,15 +104,17 @@ def train():
         factor=config['training']['scheduler_factor'],
     )
 
-    epochs     = config['training']['epochs']
-    best_loss  = float('inf')
-    train_losses = []
+    epochs        = config['training']['epochs']
+    best_val_loss = float('inf')
+    train_losses  = []
+    val_losses    = []
 
     # ── Loop di training ──────────────────────────────────────────────────────
-    model.train()
-
     for epoch in range(epochs):
         start_time_epoch = time_start()
+
+        # — Train —
+        model.train()
         epoch_loss = 0.0
 
         for batch in train_loader:
@@ -124,38 +144,66 @@ def train():
 
             epoch_loss += loss.item()
 
-        avg_loss = epoch_loss / len(train_loader)
-        train_losses.append(avg_loss)
+        avg_train_loss = epoch_loss / len(train_loader)
+        train_losses.append(avg_train_loss)
 
-        scheduler.step(avg_loss)
+        # — Validation —
+        model.eval()
+        val_loss = 0.0
 
-        # Salva il checkpoint se la loss migliora
-        if avg_loss < best_loss:
-            best_loss = avg_loss
+        with torch.no_grad():
+            for batch in val_loader:
+                waveforms = batch["waveform"]
+                labels    = batch["labels"].to(device)
+
+                cqt_list = [extract_cqt(wave) for wave in waveforms]
+                inputs   = torch.stack(cqt_list).to(device)
+
+                outputs = model(inputs)
+
+                min_frames = min(outputs.size(1), labels.size(1))
+                outputs    = outputs[:, :min_frames, :]
+                labels     = labels[:, :min_frames, :]
+
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+
+        avg_val_loss = val_loss / len(val_loader)
+        val_losses.append(avg_val_loss)
+
+        # Scheduler su val_loss
+        scheduler.step(avg_val_loss)
+
+        # Salva il checkpoint sul minimo di val_loss
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
             save_checkpoint(
                 {
                     'state_dict': model.state_dict(),
                     'optimizer':  optimizer.state_dict(),
                     'epoch':      epoch + 1,
-                    'loss':       best_loss,
+                    'loss':       best_val_loss,
                 },
                 filename=config['training']['checkpoint_path'],
             )
-            print(f"  → Nuovo best model salvato (loss: {best_loss:.4f})")
+            print(f"  → Nuovo best model salvato (val_loss: {best_val_loss:.4f})")
 
         current_lr = optimizer.param_groups[0]['lr']
         epoch_time = time_stop(start_time_epoch)
-        print(f"Epoch {epoch+1}/{epochs}  |  Loss: {avg_loss:.4f}  |  LR: {current_lr:.6f}")
-        log_epoch(epoch, avg_loss, current_lr, epoch_time)
+        print(f"Epoch {epoch+1}/{epochs}  |  "
+              f"Train: {avg_train_loss:.4f}  |  Val: {avg_val_loss:.4f}  |  "
+              f"LR: {current_lr:.6f}")
+        log_epoch(epoch, avg_train_loss, avg_val_loss, current_lr, epoch_time)
 
     # ── Fine training ─────────────────────────────────────────────────────────
     print_time(time_stop(start_time))
     end_training()
 
-    # Salva la curva di loss
+    # Salva le curve di loss
     np.save('checkpoints/train_losses.npy', np.array(train_losses))
-    print("Train losses salvate in checkpoints/train_losses.npy")
-    plot_loss_curve(train_losses)
+    np.save('checkpoints/val_losses.npy',   np.array(val_losses))
+    print("Train/val losses salvate in checkpoints/")
+    plot_loss_curve(train_losses, val_losses)
 
 
 if __name__ == "__main__":
