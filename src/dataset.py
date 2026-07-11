@@ -4,8 +4,7 @@
 #   labels  : piano roll binario  (nota attiva per ogni frame)  → shape (T, 84)
 #   onsets  : onset roll binario  (1 solo al primo frame di ogni nota) → shape (T, 84)
 #   offsets : offset roll binario (1 solo all'ultimo frame di ogni nota) → shape (T, 84)
-#
-# Tutto il resto (caricamento audio, CQT alignment, padding) è invariato.
+
 
 import torch
 import torchaudio
@@ -22,9 +21,10 @@ class MusicNetPianoDataset(Dataset):
     '''
     csv_file        : path al csv
     data_dir        : cartella radice dei dati
-    split           : 'train' o 'test'
+    split           : 'train', 'val' o 'test'
     chunk_duration  : durata in secondi di ogni chunk audio
     sample_rate     : frequenza di campionamento
+    val_seed        : seed per i chunk fissi di val/test
     '''
 
     def __init__(self,
@@ -32,7 +32,8 @@ class MusicNetPianoDataset(Dataset):
                  data_dir="data/raw",
                  split='train',
                  chunk_duration=5.0,
-                 sample_rate=22050):
+                 sample_rate=22050,
+                 val_seed=42):
 
         project_root = Path(__file__).parent.parent
         csv_path = project_root / csv_file
@@ -42,35 +43,75 @@ class MusicNetPianoDataset(Dataset):
         self.data = df[df['split'] == split].reset_index(drop=True)
 
         self.data_dir = Path(__file__).parent.parent / data_dir
+        self.split = split
         self.sample_rate = sample_rate
+        self.chunk_duration = chunk_duration
         self.chunk_samples = int(chunk_duration * sample_rate)
+
+        # FIX 1: indice (track_idx, chunk_idx) 
+        self.index = []
+        self._orig_sr_cache = {}
+
+        for row_idx, row in self.data.iterrows():
+            track_id = str(row['id'])
+            wav_path = self.data_dir / "wav" / f"{track_id}.wav"
+
+            with sf.SoundFile(wav_path) as f:
+                total_samples = len(f)
+                orig_sr = f.samplerate
+
+            self._orig_sr_cache[row_idx] = orig_sr
+            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+            n_chunks = max(1, total_samples // orig_chunk_samples)
+
+            for chunk_idx in range(n_chunks):
+                self.index.append((row_idx, chunk_idx))
+
+        # FIX 2: start_frame fisso
+        self.fixed_start_frames = {}
+        if split != 'train':
+            val_rng = random.Random(val_seed)
+            for row_idx, chunk_idx in self.index:
+                orig_sr = self._orig_sr_cache[row_idx]
+                orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+                base = chunk_idx * orig_chunk_samples
+                jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
+                self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
 
     # -------------------------------------------------------------------------
     def __len__(self):
-        return len(self.data)
+        return len(self.index)
 
     # -------------------------------------------------------------------------
     def __getitem__(self, idx):
 
-        row = self.data.iloc[idx]
+        row_idx, chunk_idx = self.index[idx]
+        row = self.data.iloc[row_idx]
         track_id = str(row['id'])
 
         wav_path   = self.data_dir / "wav"    / f"{track_id}.wav"
         label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
-        # ── Caricamento audio ────────────────────────────────────────────────
+        # caricamento audio
         with sf.SoundFile(wav_path) as f:
             total_samples = len(f)
             orig_sr = f.samplerate
 
-        if total_samples > self.chunk_samples:
-            start_frame = random.randint(0, total_samples - self.chunk_samples)
+        orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+
+        if self.split == 'train':
+            if total_samples > orig_chunk_samples:
+                start_frame = random.randint(0, total_samples - orig_chunk_samples)
+            else:
+                start_frame = 0
         else:
-            start_frame = 0
+            start_frame = min(
+                self.fixed_start_frames[(row_idx, chunk_idx)],
+                max(0, total_samples - orig_chunk_samples)
+            )
 
         with sf.SoundFile(wav_path) as f:
             f.seek(start_frame)
-            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
             chunk_np = f.read(orig_chunk_samples, dtype='float32', always_2d=True)
 
         if chunk_np.shape[0] < orig_chunk_samples:
@@ -87,7 +128,7 @@ class MusicNetPianoDataset(Dataset):
                 orig_freq=orig_sr, new_freq=self.sample_rate)
             waveform = resampler(waveform)
 
-        # ── Costruzione delle matrici di label ───────────────────────────────
+        # costruzione delle matrici 
         ORIG_SR    = 44100
         HOP_LENGTH = 512
         MIDI_MIN   = 33     # A1
@@ -97,7 +138,6 @@ class MusicNetPianoDataset(Dataset):
         df_labels = pd.read_csv(label_path)
         num_frames = self.chunk_samples // HOP_LENGTH
 
-        # Tutte e tre le matrici: (num_frames, 84)
         piano_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
         onset_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
         offset_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
@@ -123,14 +163,11 @@ class MusicNetPianoDataset(Dataset):
                 continue
             note_idx = note - MIDI_MIN
 
-            # Piano roll: 1 per tutti i frame della nota
             piano_roll[local_start_c:local_end_c, note_idx] = 1.0
 
-            # Onset: 1 solo al primo frame (se cade nel chunk)
             if local_start >= 0:
                 onset_roll[local_start, note_idx] = 1.0
 
-            # Offset: 1 solo all'ultimo frame (se cade nel chunk)
             last_frame = local_end - 1
             if 0 <= last_frame < num_frames:
                 offset_roll[last_frame, note_idx] = 1.0
@@ -144,20 +181,19 @@ class MusicNetPianoDataset(Dataset):
         }
 
 
-# ── Test ─────────────────────────────────────────────────────────────────────
+# test 
 if __name__ == "__main__":
     dataset = MusicNetPianoDataset(split="train")
-    print(f"Tracce training: {len(dataset)}")
+    print(f"Chunk training: {len(dataset)}")
 
     if len(dataset) > 0:
         sample = dataset[0]
-        print(f"Waveform : {sample['waveform'].shape}")   # (1, chunk_samples)
-        print(f"Labels   : {sample['labels'].shape}")     # (T, 84)
-        print(f"Onsets   : {sample['onsets'].shape}")     # (T, 84)
-        print(f"Offsets  : {sample['offsets'].shape}")    # (T, 84)
+        print(f"Waveform : {sample['waveform'].shape}")
+        print(f"Labels   : {sample['labels'].shape}")
+        print(f"Onsets   : {sample['onsets'].shape}")
+        print(f"Offsets  : {sample['offsets'].shape}")
         print(f"Track id : {sample['id']}")
 
-        # Sanity check: ogni onset implica almeno un frame attivo nel piano roll
         has_onset  = sample['onsets'].sum().item()
         has_active = sample['labels'].sum().item()
         print(f"Frame attivi: {has_active:.0f} | Onset frames: {has_onset:.0f}")
