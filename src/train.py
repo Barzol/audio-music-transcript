@@ -5,6 +5,9 @@
 #   - get_input_features() ricava input_features dal tipo di feature scelto
 #   - aug_config passato al dataset (attivo solo se augmentation.enabled: true)
 #   - multi_output flag: se False, allena solo pitch (onset/offset ignorati)
+#
+# AGGIORNAMENTO (performance): num_workers/pin_memory/persistent_workers
+# sui DataLoader per parallelizzare il caricamento dati durante il training.
 
 import torch
 import torch.nn as nn
@@ -93,9 +96,21 @@ def train():
     )
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config['training']['batch_size'], shuffle=True)
+        train_dataset,
+        batch_size=config['training']['batch_size'],
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
+    )
     val_loader = DataLoader(
-        val_dataset, batch_size=config['training']['batch_size'], shuffle=False)
+        val_dataset,
+        batch_size=config['training']['batch_size'],
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
+    )
 
     print(f"Tracce - train: {len(train_dataset)} | val: {len(val_dataset)}")
 
