@@ -80,11 +80,17 @@ def train():
         train_dataset,
         batch_size=config['training']['batch_size'],
         shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=config['training']['batch_size'],
         shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
     )
  
     print(f"Tracce — train: {len(train_dataset)} | val: {len(val_dataset)}")
