@@ -53,16 +53,18 @@ def train():
         train_dataset,
         batch_size  = config['training']['batch_size'],
         shuffle     = True,
-        num_workers = 0,
-        pin_memory  = True
+        num_workers = 4,
+        pin_memory  = True,
+        persistent_workers = True
     )
  
     val_loader = DataLoader(
         val_dataset,
         batch_size  = config['training']['batch_size'],
         shuffle     = False,
-        num_workers = 0,
-        pin_memory  = True
+        num_workers = 4,
+        pin_memory  = True,
+        persistent_workers = True
     )
 
     # -------- Model -------------------------

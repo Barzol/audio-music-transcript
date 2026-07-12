@@ -19,7 +19,7 @@ model:
  
 training:
   batch_size: 16
-  epochs: 75
+  epochs: 3
   learning_rate: 0.001
   scheduler_patience: 5
   scheduler_factor: 0.5
@@ -28,7 +28,7 @@ training:
   min_lr: 0.00001
  
 evaluation:
-  checkpoint_path: "checkpoints/best_model.pt"
+  checkpoint_path: "checkpoints/best_model_test.pt"
   threshold: 0.50
  
   
