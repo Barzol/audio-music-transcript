@@ -86,6 +86,18 @@ class MusicNetPianoDataset(Dataset):
                 jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
                 self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
 
+        # --- FIX 3 (performance): precompute label CSVs once per track.
+        # Prima, pd.read_csv(label_path) veniva chiamato ad ogni __getitem__,
+        # cioè una volta per ogni chunk: con decine di chunk per traccia, la
+        # stessa traccia veniva riletta/riparsata decine di volte per epoca.
+        print("Pre-computing label tables...")
+        self.labels_cache = {}
+        for row_idx, row in self.data.iterrows():
+            track_id = str(row['id'])
+            label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
+            self.labels_cache[track_id] = pd.read_csv(label_path)
+        print("Label tables ready.")
+
 # ---------------------------------------------------------------------------
     def __len__(self):
         return len(self.index)
@@ -111,7 +123,6 @@ class MusicNetPianoDataset(Dataset):
 
         # build full paths to the audio file
         wav_path = self.data_dir / "wav" / f"{track_id}.wav"
-        label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
         # ---------- Audio loading ----------
 
@@ -176,8 +187,8 @@ class MusicNetPianoDataset(Dataset):
         MIDI_MAX = 116  # note C8
         NUM_NOTES = MIDI_MAX - MIDI_MIN +1
 
-        # read csv
-        df = pd.read_csv(label_path)
+        # lookup dalla cache precalcolata in __init__ (fix 3)
+        df = self.labels_cache[track_id]
 
         # compute total number of CQT frames for chunk
         num_frames = self.chunk_samples // HOP_LENGTH
