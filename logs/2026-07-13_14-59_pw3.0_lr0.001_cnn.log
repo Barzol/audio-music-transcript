@@ -1,0 +1,56 @@
+======================================================================
+  EXPERIMENT LOG — MAESTRO Phase 1
+  Started : 2026-07-13 14:59:34
+  File    : 2026-07-13_14-59_pw3.0_lr0.001_cnn.log
+======================================================================
+
+-- HYPERPARAMETERS --------------------------------------------------
+
+  [ Model ]
+  input_features     : 84
+  dropout            : 0.4
+
+  [ Training ]
+  batch_size         : 16
+  learning_rate      : 0.001
+  epochs             : 3
+  pos_weight         : 3.0
+  scheduler_patience : 5
+  scheduler_factor   : 0.5
+  min_lr             : 1e-05
+
+  [ Dataset ]
+  chunk_duration     : 5.0 s
+  sample_rate        : 22050 Hz
+  hop_length         : 256
+
+  [ Evaluation ]
+  threshold          : 0.5
+
+-- TRAINING ---------------------------------------------------------
+
+  Epoch    Train Loss   Val Loss     LR             Time      
+  -------- ------------ ------------ -------------- ----------
+  1        0.175037     0.130831     0.001000       547.9s    
+  2        0.140946     0.123737     0.001000       538.8s    
+  3        0.135276     0.118008     0.001000       530.9s    
+
+-- END OF TRAINING --------------------------------------------------
+
+-- EVALUATION -------------------------------------------------------
+
+  Evaluated at   : 2026-07-13 15:55:26
+  Threshold      : 0.5
+
+  Accuracy       : 0.9771
+  Precision      : 0.5122
+  Recall         : 0.4851
+  F1-Score       : 0.4982
+
+  Max prob       : 0.9898
+  Mean prob      : 0.0477
+  % active preds : 0.0222
+  % active labels: 0.0235
+
+======================================================================
+

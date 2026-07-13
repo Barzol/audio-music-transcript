@@ -1,5 +1,5 @@
 dataset:
-  csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
+  csv_file: "data/maestro_subset.csv"
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
   chunk_duration: 5.0
   sample_rate: 22050
