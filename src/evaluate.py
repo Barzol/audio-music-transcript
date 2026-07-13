@@ -80,7 +80,7 @@ def evaluate():
         lstm_layers=config['model']['lstm_layers'],
     ).to(device)
 
-    load_checkpoint("checkpoints/best_model.pt", model, device=device)
+    load_checkpoint(f"checkpoints/{config['training']['checkpoint_path']}", model, device=device)
     model.eval()
 
     # Raccolta predizioni

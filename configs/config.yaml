@@ -38,7 +38,7 @@ model:
 
 training:
   batch_size: 12
-  epochs: 120
+  epochs: 50
   learning_rate: 0.001
 
   pos_weight_pitch:  3.0
