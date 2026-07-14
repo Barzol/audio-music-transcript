@@ -14,7 +14,7 @@ model:
  
 training:
   batch_size: 12
-  epochs: 50
+  epochs: 25
   learning_rate: 0.001
 
   # pos_weight per ciascun output (onset/offset sono molto più rari del pitch)
@@ -24,9 +24,9 @@ training:
   
   # pesi delle singole loss nella loss totale
   loss_weight_pitch:  1.0
-  loss_weight_onset:  0.05
-  loss_weight_offset: 0.05
-  scheduler_patience: 8
+  loss_weight_onset:  0.3
+  loss_weight_offset: 0.3
+  scheduler_patience: 4
   scheduler_factor: 0.7
   checkpoint_path: "best_model.pt"
  
