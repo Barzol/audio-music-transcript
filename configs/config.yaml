@@ -15,13 +15,12 @@ model:
 
 training:
   batch_size: 12
-  learning_rate: 0.002
+  learning_rate: 0.001
   epochs: 25
   pos_weight: 3.0           # penalizes false negatives
-  scheduler_patience: 4   
+  scheduler_patience: 5   
   scheduler_factor: 0.7     # LR multiplier when it is reduced
   checkpoint_path: "best_model.pt"
 
 evaluation:
-  threshold: 0.50         # sigmoid threshold
-
+  threshold: 0.35         # sigmoid threshold
