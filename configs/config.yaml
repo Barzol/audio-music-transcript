@@ -1,7 +1,7 @@
-# config.yaml  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
+# config.yaml  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output (subset)
 
 dataset:
-  csv_file: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0/maestro-v3.0.0.csv"
+  csv_file: "data/maestro_subset.csv"   # <- subset (stesso usato in phase1/phase2), non il CSV completo
   data_dir: "C:/Users/david_jppxf8k/.cache/kagglehub/datasets/alonhaviv/the-maestro-dataset-v3-0-0/versions/1/maestro-v3.0.0"
   chunk_duration: 7.0
   sample_rate: 22050
@@ -37,7 +37,9 @@ model:
 
 training:
   batch_size: 8
-  epochs: 80
+  epochs: 40                      # <- ridotto da 80: vista la scadenza, e dato
+                                   #    che phase1/phase2 su questo stesso subset
+                                   #    convergevano bene entro 30-35 epoche
   learning_rate: 0.001
 
   pos_weight_pitch:  4.0
@@ -50,7 +52,8 @@ training:
 
   scheduler_patience: 12
   scheduler_factor: 0.7
-  checkpoint_path: "best_model.pt"
+  checkpoint_path: "best_model_maestro_phase3.pt"   # <- rinominato, non
+                                                    #    sovrascrive phase1/phase2
   grad_clip: 1.0
 
 evaluation:
@@ -59,7 +62,7 @@ evaluation:
   threshold_offset: 0.20
 
 augmentation:
-  enabled: false
+  enabled: false   # invariato: nel paper l'augmentation è applicata solo a MusicNet
 
   pitch_shift_prob: 0.3
   pitch_shift_max_steps: 2

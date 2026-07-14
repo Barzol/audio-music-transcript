@@ -1,67 +1,104 @@
-# dataset.py  –  Phase 3: CNN + BiLSTM + Multi-Output
+# dataset.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
 #
-# Rispetto alla Phase 2:
-#   - Integrata pipeline di data augmentation (pitch shift, detuning, gain,
-#     rumore gaussiano, reverb sintetico) — adattata dal codice esterno
-#   - _shift_piano_roll applicato anche a onset_roll e offset_roll
-#   - aug_config=None disattiva l'augmentation; ignorata su split != 'train'
-#   - Fix allineamento label: start_cqt_frame calcolato con fattore di scala
-#     sample_rate / ORIG_SR (necessario per resampling 44100 -> 22050)
+# Rispetto al MAESTRO Phase 2:
+#   - Aggiunto aug_config e pipeline di data augmentation
+#   - _shift_piano_roll applicato a pitch, onset e offset roll
+#   - Chiavi restituite allineate con train.py/evaluate.py:
+#       'onset_labels' -> 'onsets'
+#       'offset_labels' -> 'offsets'
+#   - Path CSV e data_dir risolti relativi alla project root
 
 import torch
 import torchaudio
 import pandas as pd
 import numpy as np
 import random
+import math
 from torch.utils.data import Dataset
 from pathlib import Path
 import soundfile as sf
+import pretty_midi
 
 from utils import load_config
 
 
-class MusicNetPianoDataset(Dataset):
+class MaestroDataset(Dataset):
 
-    config = load_config("configs/config.yaml")
+    def __init__(self,
+                 csv_file=None,
+                 data_dir=None,
+                 split='train',
+                 chunk_duration=None,
+                 sample_rate=None,
+                 aug_config=None,
+                 config_path="configs/config.yaml",
+                 val_seed=42):
 
-    def __init__(
-        self,
-        csv_file       = "data/solo_piano.csv",
-        data_dir       = "data/raw",
-        split          = 'train',
-        chunk_duration = config["dataset"]["chunk_duration"],
-        sample_rate    = config["dataset"]["sample_rate"],
-        aug_config     = None,
-        val_seed       = 42,
-    ):
+        cfg            = load_config(config_path)
+        self.config    = cfg
+        csv_file       = csv_file       or cfg['dataset']['csv_file']
+        data_dir       = data_dir       or cfg['dataset']['data_dir']
+        chunk_duration = chunk_duration or cfg['dataset']['chunk_duration']
+        sample_rate    = sample_rate    or cfg['dataset']['sample_rate']
+
+        # Risolve i path relativi alla project root (src/../)
         project_root  = Path(__file__).parent.parent
         csv_path      = project_root / csv_file
         self.data_dir = project_root / data_dir
 
         df = pd.read_csv(csv_path)
-        self.data = df[df['split'] == split].reset_index(drop=True)
-
+        self.data          = df[df['split'] == split].reset_index(drop=True)
         self.split          = split
         self.sample_rate    = sample_rate
         self.chunk_duration = chunk_duration
         self.chunk_samples  = int(chunk_duration * sample_rate)
-        self.aug_config     = aug_config if (split == 'train' and aug_config is not None) else None
+
+        # Augmentation attiva solo su train e solo se esplicitamente fornita
+        self.aug_config = aug_config if (split == 'train' and aug_config is not None) else None
+
+        print(f"Dataset '{split}' loaded: {len(self.data)} tracks.")
+
+        HOP_LENGTH = cfg['dataset']['hop_length']
+        MIDI_MIN   = cfg['dataset']['midi_min']
+        MIDI_MAX   = cfg['dataset']['midi_max']
+        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
+        frame_rate = sample_rate / HOP_LENGTH
+
+        # Pre-calcolo piano roll completo per ogni traccia
+        print("Pre-computing pitch piano rolls...")
+        self.piano_rolls = {}
+
+        for _, row in self.data.iterrows():
+            midi_path    = self.data_dir / row['midi_filename']
+            pm           = pretty_midi.PrettyMIDI(str(midi_path))
+            total_frames = int(pm.get_end_time() * frame_rate) + 1
+
+            roll = np.zeros((total_frames, NUM_NOTES), dtype=np.float32)
+
+            if len(pm.instruments) > 0:
+                for note in pm.instruments[0].notes:
+                    if not (MIDI_MIN <= note.pitch <= MIDI_MAX):
+                        continue
+                    pitch_idx = note.pitch - MIDI_MIN
+                    f_start   = int(note.start * frame_rate)
+                    f_end     = min(int(note.end * frame_rate), total_frames - 1)
+                    roll[f_start:f_end + 1, pitch_idx] = 1.0
+
+            self.piano_rolls[row['midi_filename']] = roll
+
+        print("Piano rolls ready.")
 
         # --- FIX 1: indice (track_idx, chunk_idx) ---
         self.index = []
         self._orig_sr_cache = {}
 
         for row_idx, row in self.data.iterrows():
-            track_id = str(row['id'])
-            wav_path = self.data_dir / "wav" / f"{track_id}.wav"
+            wav_path = self.data_dir / row['audio_filename']
+            info     = sf.info(wav_path)
 
-            with sf.SoundFile(wav_path) as f:
-                total_samples = len(f)
-                orig_sr = f.samplerate
-
-            self._orig_sr_cache[row_idx] = orig_sr
-            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
-            n_chunks = max(1, total_samples // orig_chunk_samples)
+            self._orig_sr_cache[row_idx] = info.samplerate
+            orig_chunk_samples = int(self.chunk_samples * info.samplerate / self.sample_rate)
+            n_chunks = max(1, info.frames // orig_chunk_samples)
 
             for chunk_idx in range(n_chunks):
                 self.index.append((row_idx, chunk_idx))
@@ -81,24 +118,25 @@ class MusicNetPianoDataset(Dataset):
         return len(self.index)
 
     def __getitem__(self, idx):
+        cfg      = self.config
         row_idx, chunk_idx = self.index[idx]
         row      = self.data.iloc[row_idx]
-        track_id = str(row['id'])
+        track_id = Path(row['audio_filename']).stem
+        wav_path = self.data_dir / row['audio_filename']
 
-        wav_path   = self.data_dir / "wav"    / f"{track_id}.wav"
-        label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
+        HOP_LENGTH = cfg['dataset']['hop_length']
+        MIDI_MIN   = cfg['dataset']['midi_min']
+        MIDI_MAX   = cfg['dataset']['midi_max']
+        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
 
         # Audio
-        with sf.SoundFile(wav_path) as f:
-            total_samples = len(f)
-            orig_sr       = f.samplerate
-
+        info               = sf.info(wav_path)
+        total_samples      = info.frames
+        orig_sr            = info.samplerate
         orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
 
         if self.split == 'train':
-            start_frame = 0
-            if total_samples > orig_chunk_samples:
-                start_frame = random.randint(0, total_samples - orig_chunk_samples)
+            start_frame = random.randint(0, max(0, total_samples - orig_chunk_samples))
         else:
             start_frame = min(
                 self.fixed_start_frames[(row_idx, chunk_idx)],
@@ -110,52 +148,45 @@ class MusicNetPianoDataset(Dataset):
             chunk_np = f.read(orig_chunk_samples, dtype='float32', always_2d=True)
 
         if chunk_np.shape[0] < orig_chunk_samples:
-            pad_len  = orig_chunk_samples - chunk_np.shape[0]
-            chunk_np = np.pad(chunk_np, ((0, pad_len), (0, 0)), mode='constant')
+            pad      = orig_chunk_samples - chunk_np.shape[0]
+            chunk_np = np.pad(chunk_np, ((0, pad), (0, 0)), mode='constant')
 
         waveform = torch.tensor(chunk_np.T, dtype=torch.float32)
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
         if orig_sr != self.sample_rate:
-            waveform = torchaudio.transforms.Resample(
-                orig_freq=orig_sr, new_freq=self.sample_rate)(waveform)
+            waveform = torchaudio.transforms.Resample(orig_sr, self.sample_rate)(waveform)
 
-        # Label
-        ORIG_SR    = 44100
-        HOP_LENGTH = 512
-        MIDI_MIN   = 33
-        MIDI_MAX   = 116
-        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
+        # Pitch labels
+        frame_rate     = self.sample_rate / HOP_LENGTH
+        num_frames     = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
+        start_time_sec = start_frame / orig_sr
+        label_start    = int(start_time_sec * frame_rate)
+        label_end      = label_start + num_frames
 
-        df_labels  = pd.read_csv(label_path)
-        num_frames = self.chunk_samples // HOP_LENGTH
+        full_roll  = self.piano_rolls[row['midi_filename']]
+        piano_roll = full_roll[label_start:min(label_end, len(full_roll))]
 
-        piano_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
-        onset_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
-        offset_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
+        if len(piano_roll) < num_frames:
+            pad        = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
+            piano_roll = np.vstack([piano_roll, pad])
 
-        scale           = self.sample_rate / ORIG_SR
-        start_cqt_frame = int(start_frame * scale) // HOP_LENGTH
+        # Onset / Offset derivati on-the-fly dal pitch roll
+        if label_start > 0 and label_start <= len(full_roll):
+            prev_frame = full_roll[label_start - 1:label_start]
+        else:
+            prev_frame = np.zeros((1, NUM_NOTES), dtype=np.float32)
 
-        for _, label_row in df_labels.iterrows():
-            note_start = int(label_row['start_time'] * scale) // HOP_LENGTH
-            note_end   = int(label_row['end_time']   * scale) // HOP_LENGTH
-            local_start = note_start - start_cqt_frame
-            local_end   = note_end   - start_cqt_frame
+        if label_end < len(full_roll):
+            next_frame = full_roll[label_end:label_end + 1]
+        else:
+            next_frame = np.zeros((1, NUM_NOTES), dtype=np.float32)
 
-            if local_end <= 0 or local_start >= num_frames:
-                continue
-            note = int(label_row['note'])
-            if note < MIDI_MIN or note > MIDI_MAX:
-                continue
-            note_idx = note - MIDI_MIN
+        prev_extended = np.vstack([prev_frame, piano_roll[:-1]])
+        onset_roll    = np.clip(piano_roll - prev_extended, 0, 1)
 
-            piano_roll[max(0,local_start):min(num_frames,local_end), note_idx] = 1.0
-            if local_start >= 0:
-                onset_roll[local_start, note_idx] = 1.0
-            last_frame = local_end - 1
-            if 0 <= last_frame < num_frames:
-                offset_roll[last_frame, note_idx] = 1.0
+        next_extended = np.vstack([piano_roll[1:], next_frame])
+        offset_roll   = np.clip(piano_roll - next_extended, 0, 1)
 
         # Augmentation
         pitch_shift_steps = 0
@@ -172,15 +203,14 @@ class MusicNetPianoDataset(Dataset):
             waveform = waveform / max_val
 
         return {
-            "waveform": waveform,
-            "labels":   torch.tensor(piano_roll,  dtype=torch.float32),
-            "onsets":   torch.tensor(onset_roll,  dtype=torch.float32),
-            "offsets":  torch.tensor(offset_roll, dtype=torch.float32),
-            "id":       track_id,
+            'waveform': waveform,
+            'labels':   torch.tensor(piano_roll,  dtype=torch.float32),
+            'onsets':   torch.tensor(onset_roll,  dtype=torch.float32),
+            'offsets':  torch.tensor(offset_roll, dtype=torch.float32),
+            'id':       track_id,
         }
 
     def _shift_piano_roll(self, piano_roll, n_steps, num_notes):
-        """Trasla le note di n_steps semitoni. Note fuori range [0,num_notes) scartate."""
         shifted = np.zeros_like(piano_roll)
         for note_idx in range(num_notes):
             new_idx = note_idx + n_steps
@@ -189,39 +219,30 @@ class MusicNetPianoDataset(Dataset):
         return shifted
 
     def _apply_augmentation(self, waveform):
-        """
-        Pitch shift (int) | detuning (float, mutualmente esclusivi),
-        gain, rumore gaussiano, reverb sintetico.
-        Restituisce (waveform, pitch_shift_steps).
-        """
-        config = self.aug_config
+        cfg = self.aug_config
         pitch_shift_steps = 0
 
-        # 1. Pitch shift / detuning
-        if random.random() < config.get('pitch_shift_prob', 0.0):
-            max_steps = int(config.get('pitch_shift_max_steps', 2))
+        if random.random() < cfg.get('pitch_shift_prob', 0.0):
+            max_steps = int(cfg.get('pitch_shift_max_steps', 2))
             possible  = [s for s in range(-max_steps, max_steps + 1) if s != 0]
             pitch_shift_steps = random.choice(possible)
             waveform = torchaudio.functional.pitch_shift(
                 waveform, sample_rate=self.sample_rate, n_steps=float(pitch_shift_steps))
-        elif random.random() < config.get('detuning_prob', 0.0):
-            detuning = random.uniform(-config.get('detuning_max_steps', 0.5),
-                                       config.get('detuning_max_steps', 0.5))
+        elif random.random() < cfg.get('detuning_prob', 0.0):
+            detuning = random.uniform(-cfg.get('detuning_max_steps', 0.5),
+                                       cfg.get('detuning_max_steps', 0.5))
             waveform = torchaudio.functional.pitch_shift(
                 waveform, sample_rate=self.sample_rate, n_steps=detuning)
 
-        # 2. Gain
-        if random.random() < config.get('gain_prob', 0.0):
-            waveform = waveform * random.uniform(config.get('gain_min', 0.5), config.get('gain_max', 1.2))
+        if random.random() < cfg.get('gain_prob', 0.0):
+            waveform = waveform * random.uniform(cfg.get('gain_min', 0.5), cfg.get('gain_max', 1.2))
 
-        # 3. Rumore gaussiano (SNR > 40 dB a noise_max=0.005)
-        if random.random() < config.get('noise_prob', 0.0):
-            nl = random.uniform(config.get('noise_min', 0.001), config.get('noise_max', 0.005))
+        if random.random() < cfg.get('noise_prob', 0.0):
+            nl = random.uniform(cfg.get('noise_min', 0.001), cfg.get('noise_max', 0.005))
             waveform = waveform + nl * torch.randn_like(waveform)
 
-        # 4. Reverb sintetico (IR esponenziale, RT60 in [0.3, 1.5] s)
-        if random.random() < config.get('reverb_prob', 0.0):
-            rt60   = random.uniform(config.get('reverb_rt60_min', 0.3), config.get('reverb_rt60_max', 1.5))
+        if random.random() < cfg.get('reverb_prob', 0.0):
+            rt60   = random.uniform(cfg.get('reverb_rt60_min', 0.3), cfg.get('reverb_rt60_max', 1.5))
             ir_len = int(rt60 * 1.2 * self.sample_rate)
             t      = torch.linspace(0, rt60 * 1.2, ir_len)
             ir     = torch.exp(-t / (rt60 / np.log(1000.0)))
@@ -231,12 +252,15 @@ class MusicNetPianoDataset(Dataset):
 
         return waveform, pitch_shift_steps
 
-if __name__ == "__main__":
-    config    = load_config("configs/config.yaml")
-    augconfig   = config.get('augmentation', {})
-    aug_conf  = augconfig if augconfig.get('enabled', False) else None
-    dataset   = MusicNetPianoDataset(split="train", aug_config=aug_conf)
-    print(f"Chunk: {len(dataset)}")
-    s = dataset[0]
-    print(f"waveform {s['waveform'].shape}  labels {s['labels'].shape}  "
-          f"onsets {s['onsets'].shape}  offsets {s['offsets'].shape}")
+
+if __name__ == '__main__':
+    config   = load_config("configs/config.yaml")
+    aug_cfg  = config.get('augmentation', {})
+    aug_conf = aug_cfg if aug_cfg.get('enabled', False) else None
+    ds       = MaestroDataset(split='train', aug_config=aug_conf)
+    print(f"Chunk di training: {len(ds)}")
+    sample   = ds[0]
+    print(f"Waveform : {sample['waveform'].shape}")
+    print(f"Labels   : {sample['labels'].shape}   active={sample['labels'].mean():.4f}")
+    print(f"Onsets   : {sample['onsets'].shape}   active={sample['onsets'].mean():.4f}")
+    print(f"Offsets  : {sample['offsets'].shape}  active={sample['offsets'].mean():.4f}")

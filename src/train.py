@@ -74,10 +74,9 @@ def train():
     val_dataset   = MaestroDataset(split='validation', aug_config=None,       config_path=CONFIG_PATH)
 
     train_loader = DataLoader(train_dataset, batch_size=config['training']['batch_size'],
-                              shuffle=True,  num_workers=0)
+                            shuffle=True,  num_workers=4, pin_memory=True, persistent_workers=True)
     val_loader   = DataLoader(val_dataset,   batch_size=config['training']['batch_size'],
-                              shuffle=False, num_workers=0)
-
+                            shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
     print(f"Tracce - train: {len(train_dataset)} | val: {len(val_dataset)}")
 
     input_features = get_input_features(feat_cfg, sr=sr)
