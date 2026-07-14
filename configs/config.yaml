@@ -31,14 +31,14 @@ features:
 model:
   # multi_output: true  = allena pitch + onset + offset
   #               false = solo pitch (loss_weight onset/offset ignorati)
-  multi_output: false
+  multi_output: true
   dropout: 0.3
   hidden_size: 256
   lstm_layers: 1
 
 training:
   batch_size: 12
-  epochs: 120
+  epochs: 25          # ridotto per tempo (paper/default: 120 con patience 12 - vedi nota)
   learning_rate: 0.001
 
   pos_weight_pitch:  3.0
@@ -46,10 +46,10 @@ training:
   pos_weight_offset: 25.0
 
   loss_weight_pitch:  1.0
-  loss_weight_onset:  0.0
-  loss_weight_offset: 0.0
+  loss_weight_onset:  0.3   # era 0.0 - stesso valore usato nel run di Fase 2 confrontato
+  loss_weight_offset: 0.3   # era 0.0
 
-  scheduler_patience: 12
+  scheduler_patience: 4     # ridotto in proporzione a epochs=25 (era 12, proporzionale a 120)
   scheduler_factor: 0.7
   checkpoint_path: "weights_musicnet_best.pt"
   grad_clip: 1.0
@@ -63,7 +63,10 @@ evaluation:
 # enabled: false -> nessuna aug (default sicuro)
 # enabled: true  -> attiva sul train, mai su val/test
 augmentation:
-  enabled: true
+  enabled: false   # disattivata per questo confronto: isola l'effetto della sola BiLSTM
+                   # rispetto al run di Fase 2 (stessa loss/pos_weight/soglie, unica
+                   # differenza = aggiunta di BiLSTM). Riattivala in un secondo run
+                   # separato per replicare l'ablation study del paper (Sezione 5.4).
 
   # Pitch shift intero: shifta waveform E piano roll
   pitch_shift_prob: 0.3
