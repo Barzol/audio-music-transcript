@@ -196,13 +196,21 @@ class MusicNetPianoDataset(Dataset):
         # creates an empty piano roll
         piano_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
 
+        # FIX: start_frame e i tempi delle note sono espressi in campioni al
+        # sample rate ORIGINALE del file (orig_sr), ma i frame del modello
+        # (num_frames, HOP_LENGTH) sono nel dominio ricampionato (self.sample_rate).
+        # Senza questa conversione gli indici di frame risultano sistematicamente
+        # disallineati rispetto alla vera timeline del CQT (stesso fix applicato
+        # in Fase 2 e già presente in Fase 3).
+        scale = self.sample_rate / ORIG_SR
+
         # convert audio start position to CQT frame index
-        start_cqt_frame = start_frame // HOP_LENGTH
+        start_cqt_frame = int(start_frame * scale) // HOP_LENGTH
 
         for _, label_row in df.iterrows():
 
-            note_start = int(label_row['start_time']) // HOP_LENGTH
-            note_end = int(label_row['end_time']) // HOP_LENGTH
+            note_start = int(label_row['start_time'] * scale) // HOP_LENGTH
+            note_end = int(label_row['end_time'] * scale) // HOP_LENGTH
 
             local_start = note_start - start_cqt_frame            
             local_end   = note_end   - start_cqt_frame

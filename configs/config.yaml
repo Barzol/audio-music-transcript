@@ -23,5 +23,5 @@ training:
   checkpoint_path: "best_model.pt"
 
 evaluation:
-  threshold: 0.30         # sigmoid threshold
+  threshold: 0.50         # sigmoid threshold
 

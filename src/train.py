@@ -146,6 +146,14 @@ def train():
             # Loss + backprop
             loss = criterion(outputs, labels)
             loss.backward()
+
+            # Gradient clipping: fissato a 1.0 in tutti gli esperimenti del paper
+            # (Tabella 1), previene i picchi di gradiente nelle prime epoche.
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                max_norm=config['training'].get('gradient_clipping', 1.0),
+            )
+
             optimizer.step()
 
             epoch_loss += loss.item()
