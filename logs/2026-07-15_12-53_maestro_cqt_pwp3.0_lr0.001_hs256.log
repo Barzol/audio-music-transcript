@@ -1,0 +1,49 @@
+======================================================================
+  EXPERIMENT LOG  -  Phase 3: CNN + BiLSTM
+  Started : 2026-07-15 12:53:18
+  File    : 2026-07-15_12-53_maestro_cqt_pwp3.0_lr0.001_hs256.log
+  Dataset : MAESTRO
+======================================================================
+
+-- HYPERPARAMETERS --------------------------------------------------
+
+  [ Features ]
+  type               : cqt
+  hop_length         : 256
+  params             : cqt_bins=84
+  input_features     : 84
+
+  [ Model ]
+  dropout            : 0.3
+  hidden_size        : 256
+  lstm_layers        : 1
+  multi_output       : True
+
+  [ Training ]
+  batch_size         : 12
+  learning_rate      : 0.001
+  epochs             : 30
+  pos_weight_pitch   : 3.0
+  pos_weight_onset   : 25.0
+  pos_weight_offset  : 25.0
+  loss_weight_pitch  : 1.0
+  loss_weight_onset  : 0.3
+  loss_weight_offset : 0.3
+  scheduler_patience : 16
+  scheduler_factor   : 0.7
+  grad_clip          : 1.0
+
+  [ Dataset ]
+  chunk_duration     : 7.0 s
+  sample_rate        : 22050 Hz
+  augmentation       : OFF
+
+  [ Evaluation ]
+  threshold_pitch    : 0.35
+  threshold_onset    : 0.2
+  threshold_offset   : 0.2
+
+-- TRAINING ---------------------------------------------------------
+
+  Epoch    Train Loss     Val Loss       LR             Time      
+  -------- -------------- -------------- -------------- ----------
