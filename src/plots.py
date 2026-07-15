@@ -1,10 +1,3 @@
-# generates all report visualizations
-#
-# 1. plot_loss_curve
-# 2. plot_precision_recall
-# 3. plot_piano_roll
-# 4. plot_confusion_per note
-# 5. plot_prob_distribution
 
 import os
 import numpy as np
@@ -22,13 +15,11 @@ from model import PianoTranscriptArchitecture
 from utils import extract_cqt, get_device, load_checkpoint, load_config
 
 
-# ouput directory
 PLOTS_DIR = Path(__file__).parent.parent / "plots"
 PLOTS_DIR.mkdir(exist_ok=True)
 
-# midi note names for axis
-MIDI_MIN = 33               # A1
-MIDI_MAX = MIDI_MIN + 84    # C8
+MIDI_MIN = 33
+MIDI_MAX = MIDI_MIN + 84
 
 
 def midi_to_name(midi_number):
@@ -39,7 +30,6 @@ def midi_to_name(midi_number):
     return f"{name}{octave}"
 
 
-# -------- LOSS CURVE --------
 
 
 def plot_loss_curve(train_losses, save=True):
@@ -96,11 +86,9 @@ def plot_loss_curve(train_losses, save=True):
         path = PLOTS_DIR / 'loss_curve.png'
         plt.savefig(path, dpi=150)
     
-    # plt.show()
     plt.close()
 
 
-# -------- PRECISION / RECALL / F1 vs THRESHOLD --------
 
 
 def plot_precision_recall_threshold(all_probs, all_labels, save=True):
@@ -190,11 +178,9 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
         path = PLOTS_DIR / 'precision_recall_threshold.png'
         plt.savefig(path, dpi=150)
     
-    # plt.show()
     plt.close()
 
 
-# -------- PIANO ROLL --------
 
 
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
@@ -256,12 +242,10 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
         path = PLOTS_DIR / f'piano_roll_{track_id}.png'
         plt.savefig(path, dpi=150)
     
-    # plt.show()
     plt.close()
 
 
 
-# -------- PER-Note CONFUSION --------
 
 
 def plot_confusion_per_note(all_labels, all_preds, threshold=0.3, save=True):
@@ -337,11 +321,9 @@ def plot_confusion_per_note(all_labels, all_preds, threshold=0.3, save=True):
         path = PLOTS_DIR / 'confusion_per_note.png'
         plt.savefig(path, dpi=150)
     
-    # plt.show()
     plt.close()
 
 
-# -------- PROBABILITY DISTRIBUTION --------
 
 
 def plot_prob_distribution(all_probs, all_labels, save=True):
@@ -359,9 +341,7 @@ def plot_prob_distribution(all_probs, all_labels, save=True):
     probs_flat = all_probs.flatten()
     labels_flat = all_labels.flatten().astype(bool)
 
-    # 'note on' probabilites
     active_probs = probs_flat[labels_flat]
-    # 'note off' probabilities
     inactive_probs = probs_flat[~labels_flat]
 
     fig, ax = plt.subplots(figsize=(10,5))
@@ -402,6 +382,5 @@ def plot_prob_distribution(all_probs, all_labels, save=True):
         path = PLOTS_DIR / 'prob_distribution.png'
         plt.savefig(path, dpi=150)
     
-    # plt.show()
     plt.close()
 
