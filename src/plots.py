@@ -1,9 +1,3 @@
-# plots.py  -  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla versione precedente:
-#   - MIDI_MIN e num_notes non più hardcoded (erano 33 e 84 per MusicNet)
-#   - Le funzioni accettano midi_min e num_notes come parametri opzionali
-#     (default: 21 / 88 per MAESTRO; passa 33/84 per MusicNet)
 
 import numpy as np
 import matplotlib
@@ -26,7 +20,6 @@ def midi_to_name(midi_number):
     return f"{name}{octave}"
 
 
-# ── Loss Curve ────────────────────────────────────────────────────────────────
 
 def plot_loss_curve(train_losses, val_losses=None, save=True):
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -54,7 +47,6 @@ def plot_loss_curve(train_losses, val_losses=None, save=True):
     plt.close()
 
 
-# ── Precision / Recall / F1 vs Threshold ─────────────────────────────────────
 
 def plot_precision_recall_threshold(all_probs, all_labels, save=True):
     thresholds = np.arange(0.05, 0.95, 0.05)
@@ -92,7 +84,6 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
     plt.close()
 
 
-# ── Piano Roll ────────────────────────────────────────────────────────────────
 
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3,
                    midi_min=21, save=True):
@@ -146,7 +137,6 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3,
     plt.close()
 
 
-# ── Per-Note Confusion ────────────────────────────────────────────────────────
 
 def plot_confusion_per_note(all_labels, all_preds, threshold=0.3,
                             midi_min=21, save=True):
@@ -186,7 +176,6 @@ def plot_confusion_per_note(all_labels, all_preds, threshold=0.3,
     plt.close()
 
 
-# ── Probability Distribution ──────────────────────────────────────────────────
 
 def plot_prob_distribution(all_probs, all_labels, save=True):
     probs_flat  = all_probs.flatten()

@@ -1,10 +1,3 @@
-# utils.py  –  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Aggiunto rispetto alla Phase 2:
-#   - extract_stft  : STFT magnitude in dB, ritagliata al range pianistico
-#   - extract_mel   : Mel spectrogram in dB
-#   - extract_features : dispatcher basato su config['features']['type']
-#   - get_input_features : restituisce il numero di bin per tipo di feature
 
 import torch
 import random
@@ -49,7 +42,6 @@ def load_config(config_path="configs/config.yaml"):
         return yaml.safe_load(file)
 
 
-# ── Estrazione feature ────────────────────────────────────────────────────────
 
 def extract_cqt(waveform, sr=22050, hop_length=512, n_bins=84, bins_per_octave=12):
     """
@@ -69,7 +61,7 @@ def extract_cqt(waveform, sr=22050, hop_length=512, n_bins=84, bins_per_octave=1
         bins_per_octave=bins_per_octave,
     )
     cqt_db = librosa.amplitude_to_db(np.abs(cqt_complex), ref=np.max)
-    return torch.tensor(cqt_db, dtype=torch.float32).T  # (T, n_bins)
+    return torch.tensor(cqt_db, dtype=torch.float32).T
 
 
 def extract_stft(waveform, sr=22050, hop_length=512, n_fft=2048,
@@ -91,12 +83,11 @@ def extract_stft(waveform, sr=22050, hop_length=512, n_fft=2048,
     stft_complex = librosa.stft(waveform, n_fft=n_fft, hop_length=hop_length)
     mag_db = librosa.amplitude_to_db(np.abs(stft_complex), ref=np.max)
 
-    # Ritaglia al range pianistico
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     mask  = (freqs >= fmin) & (freqs <= fmax)
     mag_db = mag_db[mask, :]
 
-    return torch.tensor(mag_db, dtype=torch.float32).T  # (T, n_freq_bins)
+    return torch.tensor(mag_db, dtype=torch.float32).T
 
 
 def extract_mel(waveform, sr=22050, hop_length=512, n_fft=2048, n_mels=128):
@@ -112,7 +103,7 @@ def extract_mel(waveform, sr=22050, hop_length=512, n_fft=2048, n_mels=128):
         y=waveform, sr=sr, n_fft=n_fft, hop_length=hop_length, n_mels=n_mels
     )
     mel_db = librosa.power_to_db(mel, ref=np.max)
-    return torch.tensor(mel_db, dtype=torch.float32).T  # (T, n_mels)
+    return torch.tensor(mel_db, dtype=torch.float32).T
 
 
 def extract_features(waveform, feat_cfg, sr=22050):
@@ -171,7 +162,6 @@ def get_input_features(feat_cfg, sr=22050):
         raise ValueError(f"Feature type sconosciuto: '{t}'.")
 
 
-# ── Timing ────────────────────────────────────────────────────────────────────
 
 def time_start():
     return time.time()

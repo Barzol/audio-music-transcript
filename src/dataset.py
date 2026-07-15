@@ -1,12 +1,3 @@
-# dataset.py  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto al MAESTRO Phase 2:
-#   - Aggiunto aug_config e pipeline di data augmentation
-#   - _shift_piano_roll applicato a pitch, onset e offset roll
-#   - Chiavi restituite allineate con train.py/evaluate.py:
-#       'onset_labels' -> 'onsets'
-#       'offset_labels' -> 'offsets'
-#   - Path CSV e data_dir risolti relativi alla project root
 
 import torch
 import torchaudio
@@ -41,7 +32,6 @@ class MaestroDataset(Dataset):
         chunk_duration = chunk_duration or cfg['dataset']['chunk_duration']
         sample_rate    = sample_rate    or cfg['dataset']['sample_rate']
 
-        # Risolve i path relativi alla project root (src/../)
         project_root  = Path(__file__).parent.parent
         csv_path      = project_root / csv_file
         self.data_dir = project_root / data_dir
@@ -53,7 +43,6 @@ class MaestroDataset(Dataset):
         self.chunk_duration = chunk_duration
         self.chunk_samples  = int(chunk_duration * sample_rate)
 
-        # Augmentation attiva solo su train e solo se esplicitamente fornita
         self.aug_config = aug_config if (split == 'train' and aug_config is not None) else None
 
         print(f"Dataset '{split}' loaded: {len(self.data)} tracks.")
@@ -64,7 +53,6 @@ class MaestroDataset(Dataset):
         NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
         frame_rate = sample_rate / HOP_LENGTH
 
-        # Pre-calcolo piano roll completo per ogni traccia
         print("Pre-computing pitch piano rolls...")
         self.piano_rolls = {}
 
@@ -88,7 +76,6 @@ class MaestroDataset(Dataset):
 
         print("Piano rolls ready.")
 
-        # --- FIX 1: indice (track_idx, chunk_idx) ---
         self.index = []
         self._orig_sr_cache = {}
 
@@ -103,7 +90,6 @@ class MaestroDataset(Dataset):
             for chunk_idx in range(n_chunks):
                 self.index.append((row_idx, chunk_idx))
 
-        # --- FIX 2: start_frame fisso per split non-train ---
         self.fixed_start_frames = {}
         if split != 'train':
             val_rng = random.Random(val_seed)
@@ -129,7 +115,6 @@ class MaestroDataset(Dataset):
         MIDI_MAX   = cfg['dataset']['midi_max']
         NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
 
-        # Audio
         info               = sf.info(wav_path)
         total_samples      = info.frames
         orig_sr            = info.samplerate
@@ -157,7 +142,6 @@ class MaestroDataset(Dataset):
         if orig_sr != self.sample_rate:
             waveform = torchaudio.transforms.Resample(orig_sr, self.sample_rate)(waveform)
 
-        # Pitch labels
         frame_rate     = self.sample_rate / HOP_LENGTH
         num_frames     = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
         start_time_sec = start_frame / orig_sr
@@ -171,7 +155,6 @@ class MaestroDataset(Dataset):
             pad        = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
             piano_roll = np.vstack([piano_roll, pad])
 
-        # Onset / Offset derivati on-the-fly dal pitch roll
         if label_start > 0 and label_start <= len(full_roll):
             prev_frame = full_roll[label_start - 1:label_start]
         else:
@@ -188,7 +171,6 @@ class MaestroDataset(Dataset):
         next_extended = np.vstack([piano_roll[1:], next_frame])
         offset_roll   = np.clip(piano_roll - next_extended, 0, 1)
 
-        # Augmentation
         pitch_shift_steps = 0
         if self.aug_config is not None:
             waveform, pitch_shift_steps = self._apply_augmentation(waveform)

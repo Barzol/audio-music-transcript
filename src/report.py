@@ -1,10 +1,3 @@
-# report.py  -  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla versione precedente:
-#   - Sezione [Features] nel log (type, hop_length, parametri specifici)
-#   - input_features derivato automaticamente via get_input_features()
-#   - multi_output e augmentation.enabled loggati
-#   - Filename include il tipo di feature: {timestamp}_{feat}_pwp{pw}_lr{lr}_hs{hs}.log
 
 from datetime import datetime
 from pathlib import Path
@@ -42,7 +35,6 @@ def start_run(config, dataset_name=None):
     lr           = config['training']['learning_rate']
     hidden       = config['model'].get('hidden_size', 0)
 
-    # Prefisso dataset nel filename (es. "maestro_")
     ds_prefix = f"{dataset_name.lower()}_" if dataset_name else ""
     filename  = f"{timestamp}_{ds_prefix}{feat_type}_pwp{pw_pitch}_lr{lr}_hs{hidden}.log"
     log_path  = LOGS_DIR / filename
@@ -50,7 +42,6 @@ def start_run(config, dataset_name=None):
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
 
-    # Deriva input_features automaticamente
     try:
         input_features = get_input_features(feat_cfg, sr=sr)
     except Exception:
@@ -74,7 +65,6 @@ def start_run(config, dataset_name=None):
     aug_cfg     = config.get('augmentation', {})
     aug_enabled = aug_cfg.get('enabled', False)
 
-    # Riga riassuntiva parametri feature per il log
     if feat_type == 'cqt':
         feat_detail = f"cqt_bins={feat_cfg.get('cqt_bins', 84)}"
     elif feat_type == 'stft':
@@ -131,7 +121,6 @@ def start_run(config, dataset_name=None):
         f"  chunk_duration     : {config['dataset']['chunk_duration']} s",
         f"  sample_rate        : {sr} Hz",
         f"  augmentation       : {'ON' if aug_enabled else 'OFF'}",
-        # Campi MAESTRO-specifici (omessi se non presenti)
         *(
             [
                 f"  midi_min           : {config['dataset']['midi_min']}",
