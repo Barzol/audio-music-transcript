@@ -1,4 +1,4 @@
-# config.yaml  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output (subset)
+# config.yaml  -  MAESTRO Phase 3: CNN + BiLSTM + Multi-Output (subset, STFT)
 
 dataset:
   csv_file: "data/maestro_subset.csv"   # <- subset (stesso usato in phase1/phase2), non il CSV completo
@@ -14,10 +14,10 @@ dataset:
 # Rappresentazione tempo-frequenza
 # type: cqt | stft | mel
 features:
-  type: cqt
+  type: stft
   hop_length: 512
 
-  # CQT - 88 bin logaritmici, A0-C8 (range completo pianoforte)
+  # CQT - 88 bin logaritmici, A0-C8 (non usato in questa run)
   cqt_bins: 88
 
   # STFT - range pianistico ritagliato (A0=27.5 Hz, C8~4200 Hz)
@@ -52,8 +52,8 @@ training:
 
   scheduler_patience: 12
   scheduler_factor: 0.7
-  checkpoint_path: "best_model_maestro_phase3.pt"   # <- rinominato, non
-                                                    #    sovrascrive phase1/phase2
+  checkpoint_path: "best_model_maestro_phase3_stft.pt"   # <- diverso dal
+                                                          #    checkpoint CQT
   grad_clip: 1.0
 
 evaluation:
