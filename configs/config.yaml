@@ -1,4 +1,3 @@
-# config.yaml  –  Fase 2: Multi-Output CNN
  
 dataset:
   csv_file: "data/solo_piano.csv"
@@ -9,20 +8,18 @@ dataset:
 model:
   input_features: 84
   dropout: 0.4
-  hidden_size: 0      # non usato, mantenuto per report.py
-  lstm_layers: 0      # non usato, mantenuto per report.py
+  hidden_size: 0
+  lstm_layers: 0
  
 training:
   batch_size: 12
   epochs: 50
   learning_rate: 0.001
 
-  # pos_weight per ciascun output (onset/offset sono molto più rari del pitch)
   pos_weight_pitch:  3.0
-  pos_weight_onset:  25.0   # onset: ~1 frame per nota vs N frame attivi
-  pos_weight_offset: 25.0   # offset: stesso ordine di grandezza degli onset
+  pos_weight_onset:  25.0
+  pos_weight_offset: 25.0
   
-  # pesi delle singole loss nella loss totale
   loss_weight_pitch:  1.0
   loss_weight_onset:  0.05
   loss_weight_offset: 0.05

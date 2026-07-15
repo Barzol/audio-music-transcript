@@ -1,9 +1,3 @@
-# dataset.py  –  Fase 2: Multi-Output
-#
-# Rispetto alla Fase 1, __getitem__ restituisce tre matrici di label:
-#   labels  : piano roll binario  (nota attiva per ogni frame)  → shape (T, 84)
-#   onsets  : onset roll binario  (1 solo al primo frame di ogni nota) → shape (T, 84)
-#   offsets : offset roll binario (1 solo all'ultimo frame di ogni nota) → shape (T, 84)
 
 
 import torch
@@ -48,7 +42,6 @@ class MusicNetPianoDataset(Dataset):
         self.chunk_duration = chunk_duration
         self.chunk_samples = int(chunk_duration * sample_rate)
 
-        # FIX 1: indice (track_idx, chunk_idx) 
         self.index = []
         self._orig_sr_cache = {}
 
@@ -67,7 +60,6 @@ class MusicNetPianoDataset(Dataset):
             for chunk_idx in range(n_chunks):
                 self.index.append((row_idx, chunk_idx))
 
-        # FIX 2: start_frame fisso
         self.fixed_start_frames = {}
         if split != 'train':
             val_rng = random.Random(val_seed)
@@ -78,11 +70,9 @@ class MusicNetPianoDataset(Dataset):
                 jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
                 self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
 
-    # -------------------------------------------------------------------------
     def __len__(self):
         return len(self.index)
 
-    # -------------------------------------------------------------------------
     def __getitem__(self, idx):
 
         row_idx, chunk_idx = self.index[idx]
@@ -92,7 +82,6 @@ class MusicNetPianoDataset(Dataset):
         wav_path   = self.data_dir / "wav"    / f"{track_id}.wav"
         label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
-        # caricamento audio
         with sf.SoundFile(wav_path) as f:
             total_samples = len(f)
             orig_sr = f.samplerate
@@ -128,12 +117,11 @@ class MusicNetPianoDataset(Dataset):
                 orig_freq=orig_sr, new_freq=self.sample_rate)
             waveform = resampler(waveform)
 
-        # costruzione delle matrici 
         ORIG_SR    = 44100
         HOP_LENGTH = 512
-        MIDI_MIN   = 33     # A1
-        MIDI_MAX   = 116    # C8
-        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1  # 84
+        MIDI_MIN   = 33
+        MIDI_MAX   = 116
+        NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
 
         df_labels = pd.read_csv(label_path)
         num_frames = self.chunk_samples // HOP_LENGTH
@@ -181,7 +169,6 @@ class MusicNetPianoDataset(Dataset):
         }
 
 
-# test 
 if __name__ == "__main__":
     dataset = MusicNetPianoDataset(split="train")
     print(f"Chunk training: {len(dataset)}")

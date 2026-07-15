@@ -1,14 +1,3 @@
-# train.py  –  Fase 2: Multi-Output CNN
-#
-# Differenze rispetto alla Fase 1:
-#   - Il modello restituisce tre output: (logit_pitch, logit_onset, logit_offset)
-#   - Tre loss separate con pos_weight distinti (onset/offset sono più rari)
-#   - Loss totale = w_pitch*L_pitch + w_onset*L_onset + w_offset*L_offset
-#     (pesi configurabili in configs/config.yaml)
-#   - Il batch ora estrae anche 'onsets' e 'offsets' dal dataset
-#   - Loop di validazione al termine di ogni epoch
-#   - Lo scheduler usa val_loss invece di train_loss
-#   - Il checkpoint viene salvato sul minimo di val_loss
  
 import torch
 import torch.nn as nn
@@ -60,7 +49,6 @@ def train():
     device = get_device()
     print(f"Training on: {device}")
  
-    # ── Dataset e DataLoader ─────────────────────────────────────────────────
     train_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -95,13 +83,11 @@ def train():
  
     print(f"Tracce — train: {len(train_dataset)} | val: {len(val_dataset)}")
  
-    # ── Modello ──────────────────────────────────────────────────────────────
     model = PianoTranscriptArchitecture(
         input_features=config['model']['input_features'],
         dropout=config['model']['dropout'],
     ).to(device)
  
-    # ── Loss ─────────────────────────────────────────────────────────────────
     pw_pitch  = torch.ones(84).to(device) * config['training']['pos_weight_pitch']
     pw_onset  = torch.ones(84).to(device) * config['training']['pos_weight_onset']
     pw_offset = torch.ones(84).to(device) * config['training']['pos_weight_offset']
@@ -114,10 +100,8 @@ def train():
     w_onset  = config['training']['loss_weight_onset']
     w_offset = config['training']['loss_weight_offset']
  
-    # ── Ottimizzatore e scheduler ─────────────────────────────────────────────
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
  
-    # Lo scheduler monitora la val_loss
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode='min',
@@ -130,11 +114,9 @@ def train():
     train_losses  = []
     val_losses    = []
  
-    # ── Loop di training ──────────────────────────────────────────────────────
     for epoch in range(epochs):
         start_time_epoch = time_start()
  
-        # — Train —
         model.train()
         epoch_loss = 0.0
  
@@ -159,7 +141,6 @@ def train():
         avg_train_loss = epoch_loss / len(train_loader)
         train_losses.append(avg_train_loss)
  
-        # — Validation —
         model.eval()
         val_loss = 0.0
  
@@ -182,10 +163,8 @@ def train():
         avg_val_loss = val_loss / len(val_loader)
         val_losses.append(avg_val_loss)
  
-        # Scheduler su val_loss
         scheduler.step(avg_val_loss)
  
-        # Salva il checkpoint sul minimo di val_loss
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             save_checkpoint(

@@ -1,24 +1,7 @@
-# report.py  –  Fase 2: Multi-Output CNN
-#
-# Aggiornamenti rispetto alla Fase 1:
-#   - start_run() usa pos_weight_pitch/onset/offset e threshold_pitch/onset/offset
-#   - log_metrics() accetta e logga le metriche di tutti e tre gli output
-#   - Il bug del ACTIVE_LOG_FILE.unlink() è stato corretto:
-#     il file pointer viene eliminato solo se evaluate viene chiamato dopo train
-#     (ossia se ACTIVE_LOG_FILE esiste), ma questo non impedisce re-run di evaluate.
-#
-# Funzioni pubbliche:
-#   start_run(config)                          : crea il log, scrive gli iperparametri
-#   log_epoch(epoch, loss, lr, epoch_time)     : una riga per epoch
-#   end_training()                             : separatore fine training
-#   log_metrics(pitch_metrics, onset_metrics,  : metriche di valutazione per i 3 output
-#               offset_metrics, thr_pitch,
-#               thr_onset, thr_offset)
 
 from datetime import datetime
 from pathlib import Path
 
-# --- Paths ---
 ROOT_DIR        = Path(__file__).parent.parent
 LOGS_DIR        = ROOT_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
@@ -26,7 +9,6 @@ LOGS_DIR.mkdir(exist_ok=True)
 ACTIVE_LOG_FILE = ROOT_DIR / "checkpoints" / "active_log.txt"
 
 
-# --- utils ---
 
 def _get_log_path():
     if not ACTIVE_LOG_FILE.exists():
@@ -43,7 +25,6 @@ def _write(log_path, text):
     print(text)
 
 
-# --- Run logs ---
 
 def start_run(config):
     """
@@ -142,7 +123,6 @@ def end_training():
     print("Training phase logged.")
 
 
-# --- Evaluation ---
 
 def _format_metrics_block(name, metrics, threshold):
     """
@@ -195,7 +175,6 @@ def log_metrics(pitch_metrics, onset_metrics, offset_metrics,
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
 
-    # Rimuove il puntatore al log attivo (la prossima run creerà un file nuovo)
     if ACTIVE_LOG_FILE.exists():
         ACTIVE_LOG_FILE.unlink()
 

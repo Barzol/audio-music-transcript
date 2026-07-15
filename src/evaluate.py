@@ -1,10 +1,3 @@
-# evaluate.py  –  Fase 2: Multi-Output CNN
-#
-# Differenze rispetto alla Fase 1:
-#   - Il modello restituisce (logit_pitch, logit_onset, logit_offset)
-#   - Metriche separate per pitch, onset e offset
-#   - Le threshold sono configurabili separatamente nel config
-#   - report.py logga le metriche di tutti e tre gli output
 
 import torch
 import numpy as np
@@ -56,7 +49,6 @@ def evaluate():
     device = get_device()
     print(f"Evaluation on: {device}")
 
-    # ── Dataset e DataLoader ─────────────────────────────────────────────────
     test_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -64,7 +56,6 @@ def evaluate():
     )
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
-    # ── Modello ──────────────────────────────────────────────────────────────
     model = PianoTranscriptArchitecture(
         input_features=config['model']['input_features'],
         dropout=config['model']['dropout'],
@@ -73,7 +64,6 @@ def evaluate():
     load_checkpoint("checkpoints/best_model.pt", model, device=device)
     model.eval()
 
-    # ── Raccolta predizioni ───────────────────────────────────────────────────
     all_probs_pitch,  all_labels_pitch  = [], []
     all_probs_onset,  all_labels_onset  = [], []
     all_probs_offset, all_labels_offset = [], []
@@ -134,7 +124,6 @@ def evaluate():
     thr_onset  = config['evaluation']['threshold_onset']
     thr_offset = config['evaluation']['threshold_offset']
 
-    # ── Plot (basati sul pitch, come in Fase 1) ───────────────────────────────
     print("\nGenerazione plot...")
     plot_precision_recall_threshold(all_probs_pitch, all_labels_pitch)
     plot_prob_distribution(all_probs_pitch, all_labels_pitch)
@@ -144,7 +133,6 @@ def evaluate():
         plot_piano_roll(info['labels'], info['probs'],
                         track_id=info['id'], threshold=thr_pitch)
 
-    # ── Metriche ──────────────────────────────────────────────────────────────
     print('\n══════════════ Risultati Fase 2 – Multi-Output CNN ══════════════')
 
     pitch_metrics  = compute_metrics(all_probs_pitch,  all_labels_pitch,  thr_pitch,  name="PITCH")
@@ -153,7 +141,6 @@ def evaluate():
 
     print('═════════════════════════════════════════════════════════════════')
 
-    # Logga tutti e tre gli output
     log_metrics(pitch_metrics, onset_metrics, offset_metrics,
                 thr_pitch, thr_onset, thr_offset)
 
