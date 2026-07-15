@@ -1,79 +1,59 @@
-
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
   chunk_duration: 7.0
   sample_rate: 22050
-
 features:
   type: cqt
   hop_length: 512
-
   cqt_bins: 84
-
   stft_n_fft: 1024
   stft_fmin: 55.0
   stft_fmax: 4200.0
-
   mel_n_fft: 2048
   mel_n_mels: 128
-
 model:
-  multi_output: false
+  multi_output: true
   dropout: 0.3
   hidden_size: 256
   lstm_layers: 1
-
 training:
   batch_size: 12
-  epochs: 120
   learning_rate: 0.001
-
-  pos_weight_pitch:  3.0
-  pos_weight_onset:  25.0
-  pos_weight_offset: 25.0
-
-  loss_weight_pitch:  1.0
-  loss_weight_onset:  0.0
-  loss_weight_offset: 0.0
-
+  epochs: 25
+  pos_weight_pitch: 3.0
+  pos_weight_onset: 15.0
+  pos_weight_offset: 15.0
+  loss_weight_pitch: 1.0
+  loss_weight_onset: 0.3
+  loss_weight_offset: 0.3
   scheduler_patience: 12
   scheduler_factor: 0.7
-  checkpoint_path: "weights_musicnet_best.pt"
+  checkpoint_path: "best_model.pt"
   grad_clip: 1.0
-
 evaluation:
-  threshold_pitch:  0.35
-  threshold_onset:  0.20
-  threshold_offset: 0.20
-
+  threshold_pitch: 0.35
+  threshold_onset: 0.2
+  threshold_offset: 0.2
 augmentation:
-  enabled: true
-
+  enabled: false
   pitch_shift_prob: 0.3
   pitch_shift_max_steps: 2
-
   detuning_prob: 0.0
   detuning_max_steps: 0.5
-
   gain_prob: 0.0
   gain_min: 0.5
   gain_max: 1.2
-
   noise_prob: 0.0
   noise_min: 0.001
   noise_max: 0.005
-
   reverb_prob: 0.0
   reverb_rt60_min: 0.3
   reverb_rt60_max: 1.5
-
   spec_augment_prob: 0.0
-
   freq_mask_prob: 0.0
   freq_mask_max_bands: 2
   freq_mask_max_width: 8
-      
   time_mask_prob: 0.0
   time_mask_max_bands: 2
   time_mask_max_width: 20

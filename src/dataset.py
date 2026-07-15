@@ -37,7 +37,7 @@ class MusicNetPianoDataset(Dataset):
         self.chunk_duration = chunk_duration
         self.chunk_samples  = int(chunk_duration * sample_rate)
         self.aug_config     = aug_config if (split == 'train' and aug_config is not None) else None
-        
+
         self.index = []
         self._orig_sr_cache = {}
 
@@ -46,11 +46,15 @@ class MusicNetPianoDataset(Dataset):
             wav_path = self.data_dir / "wav" / f"{track_id}.wav"
 
             with sf.SoundFile(wav_path) as f:
+                total_samples = len(f)
                 orig_sr = f.samplerate
 
             self._orig_sr_cache[row_idx] = orig_sr
-            self.index.append((row_idx, 0))
+            orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
+            n_chunks = max(1, total_samples // orig_chunk_samples)
 
+            for chunk_idx in range(n_chunks):
+                self.index.append((row_idx, chunk_idx))
 
         self.fixed_start_frames = {}
         if split != 'train':
@@ -61,8 +65,6 @@ class MusicNetPianoDataset(Dataset):
                 base = chunk_idx * orig_chunk_samples
                 jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
                 self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
-        
-
 
     def __len__(self):
         return len(self.index)

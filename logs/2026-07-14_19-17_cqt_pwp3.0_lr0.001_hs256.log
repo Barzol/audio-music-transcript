@@ -1,0 +1,59 @@
+======================================================================
+  EXPERIMENT LOG  -  Phase 3: CNN + BiLSTM
+  Started : 2026-07-14 19:17:37
+  File    : 2026-07-14_19-17_cqt_pwp3.0_lr0.001_hs256.log
+======================================================================
+
+-- HYPERPARAMETERS --------------------------------------------------
+
+  [ Features ]
+  type               : cqt
+  hop_length         : 512
+  params             : cqt_bins=84
+  input_features     : 84
+
+  [ Model ]
+  dropout            : 0.3
+  hidden_size        : 256
+  lstm_layers        : 1
+  multi_output       : True
+
+  [ Training ]
+  batch_size         : 12
+  learning_rate      : 0.001
+  epochs             : 25
+  pos_weight_pitch   : 3.0
+  pos_weight_onset   : 25.0
+  pos_weight_offset  : 25.0
+  loss_weight_pitch  : 1.0
+  loss_weight_onset  : 0.3
+  loss_weight_offset : 0.3
+  scheduler_patience : 4
+  scheduler_factor   : 0.7
+  grad_clip          : 1.0
+
+  [ Dataset ]
+  chunk_duration     : 7.0 s
+  sample_rate        : 22050 Hz
+  augmentation       : OFF
+
+  [ Evaluation ]
+  threshold_pitch    : 0.35
+  threshold_onset    : 0.2
+  threshold_offset   : 0.2
+
+-- TRAINING ---------------------------------------------------------
+
+  Epoch    Train Loss     Val Loss       LR             Time      
+  -------- -------------- -------------- -------------- ----------
+  1        0.416305       0.370561       0.001000       368.3s    
+  2        0.339650       0.315150       0.001000       375.5s    
+  3        0.293722       0.273133       0.001000       386.9s    
+  4        0.267736       0.247975       0.001000       386.5s    
+  5        0.250894       0.239540       0.001000       383.7s    
+  6        0.238143       0.224886       0.001000       374.8s    
+  7        0.228850       0.217612       0.001000       364.9s    
+  8        0.221677       0.212503       0.001000       359.6s    
+  9        0.215453       0.208895       0.001000       358.8s    
+  10       0.209584       0.200037       0.001000       357.3s    
+  11       0.205395       0.197553       0.001000       359.0s    

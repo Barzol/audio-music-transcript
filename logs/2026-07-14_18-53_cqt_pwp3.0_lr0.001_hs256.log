@@ -1,0 +1,54 @@
+======================================================================
+  EXPERIMENT LOG  -  Phase 3: CNN + BiLSTM
+  Started : 2026-07-14 18:53:27
+  File    : 2026-07-14_18-53_cqt_pwp3.0_lr0.001_hs256.log
+======================================================================
+
+-- HYPERPARAMETERS --------------------------------------------------
+
+  [ Features ]
+  type               : cqt
+  hop_length         : 512
+  params             : cqt_bins=84
+  input_features     : 84
+
+  [ Model ]
+  dropout            : 0.3
+  hidden_size        : 256
+  lstm_layers        : 1
+  multi_output       : True
+
+  [ Training ]
+  batch_size         : 12
+  learning_rate      : 0.001
+  epochs             : 25
+  pos_weight_pitch   : 3.0
+  pos_weight_onset   : 25.0
+  pos_weight_offset  : 25.0
+  loss_weight_pitch  : 1.0
+  loss_weight_onset  : 0.3
+  loss_weight_offset : 0.3
+  scheduler_patience : 4
+  scheduler_factor   : 0.7
+  grad_clip          : 1.0
+
+  [ Dataset ]
+  chunk_duration     : 7.0 s
+  sample_rate        : 22050 Hz
+  augmentation       : OFF
+
+  [ Evaluation ]
+  threshold_pitch    : 0.35
+  threshold_onset    : 0.2
+  threshold_offset   : 0.2
+
+-- TRAINING ---------------------------------------------------------
+
+  Epoch    Train Loss     Val Loss       LR             Time      
+  -------- -------------- -------------- -------------- ----------
+  1        0.854746       0.444731       0.001000       19.4s     
+  2        0.498628       0.351638       0.001000       7.3s      
+  3        0.447735       0.346536       0.001000       7.5s      
+  4        0.443013       0.343632       0.001000       7.6s      
+  5        0.432100       0.339622       0.001000       7.5s      
+  6        0.404040       0.336371       0.001000       7.9s      
