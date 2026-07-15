@@ -68,8 +68,6 @@ def load_maestro(json_path: str) -> list[dict]:
         if "data" in data:
             return data["data"]
 
-        # maestro-v3.0.0.json e' column-oriented (come pandas
-        # to_json(orient="columns")): {colonna: {row_idx: valore}}
         if set(CSV_COLUMNS).issubset(data.keys()):
             row_ids = data[CSV_COLUMNS[0]].keys()
             return [
@@ -77,7 +75,6 @@ def load_maestro(json_path: str) -> list[dict]:
                 for rid in row_ids
             ]
 
-        # fallback: dict indicizzato {row_idx: record}
         return list(data.values())
 
     raise ValueError(f"Formato JSON non riconosciuto: {type(data)}")
@@ -94,7 +91,6 @@ def stratified_sample(records: list[dict], n: int, seed: int) -> list[dict]:
         random.shuffle(result)
         return result
 
-    # Raggruppa per compositore
     by_composer: dict[str, list[dict]] = defaultdict(list)
     for rec in records:
         composer = rec.get("canonical_composer", "Unknown")
@@ -103,13 +99,11 @@ def stratified_sample(records: list[dict], n: int, seed: int) -> list[dict]:
     composers = list(by_composer.keys())
     n_composers = len(composers)
 
-    # Quota base per compositore
     base_quota = n // n_composers
     remainder = n % n_composers
 
     rng = random.Random(seed)
 
-    # Ordine casuale dei compositori per distribuire il remainder
     composer_order = composers.copy()
     rng.shuffle(composer_order)
 
@@ -118,12 +112,9 @@ def stratified_sample(records: list[dict], n: int, seed: int) -> list[dict]:
         pool = by_composer[composer].copy()
         rng.shuffle(pool)
         quota = base_quota + (1 if i < remainder else 0)
-        # Non possiamo prendere più di quanti ne abbiamo
         quota = min(quota, len(pool))
         sampled.extend(pool[:quota])
 
-    # Se il campionamento per compositore ha dato meno di n
-    # (alcune quote ridotte per pool piccoli), integrare dal resto
     if len(sampled) < n:
         sampled_keys = {
             (r["canonical_composer"], r.get("midi_filename", "")) for r in sampled
@@ -149,7 +140,6 @@ def create_subset(
     records = load_maestro(json_path)
     print(f"Totale tracce Maestro: {len(records)}")
 
-    # Separa per split originale
     splits: dict[str, list[dict]] = defaultdict(list)
     for rec in records:
         splits[rec["split"]].append(rec)
@@ -158,7 +148,6 @@ def create_subset(
           f"validation: {len(splits['validation'])} | "
           f"test: {len(splits['test'])}")
 
-    # Campiona con stratificazione
     targets = {"train": n_train, "validation": n_val, "test": n_test}
     subset_records: list[dict] = []
 
@@ -171,8 +160,6 @@ def create_subset(
         )
         subset_records.extend(sampled)
 
-    # Serializza in CSV con lo stesso schema di maestro-v3.0.0.csv,
-    # cosi' MaestroDataset puo' leggerlo senza modifiche.
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -182,7 +169,6 @@ def create_subset(
     print(f"\nSubset salvato in: {out_path}")
     print(f"Totale tracce nel subset: {len(subset_records)}")
 
-    # Stampa distribuzione compositori per split
     print("\nDistribuzione compositori nel subset:")
     for split_name in ["train", "validation", "test"]:
         split_recs = [r for r in subset_records if r["split"] == split_name]

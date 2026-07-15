@@ -15,22 +15,17 @@ model:
 
 training:
   batch_size: 16
-  epochs: 35                        # <- ridotto da 75: nel test fase1 il modello
-                                     #    convergeva già bene entro 30 epoche senza
-                                     #    mai far scattare lo scheduler; per il
-                                     #    multi-output (task più difficile) aggiungo
-                                     #    un piccolo margine, non l'intera stima originale
+  epochs: 35
   learning_rate: 0.001
   scheduler_patience: 5
   scheduler_factor: 0.5
   pos_weight: 3.0
   pos_weight_onset: 20.0
   pos_weight_offset: 15.0
-  loss_weight_pitch: 1.0            # <- aggiunto esplicitamente (mancava nel tuo config)
+  loss_weight_pitch: 1.0
   loss_weight_onset: 0.10
   loss_weight_offset: 0.02
-  checkpoint_path: "best_model_maestro_phase2.pt"   # <- rinominato per non
-                                                     #    sovrascrivere il checkpoint di phase1
+  checkpoint_path: "best_model_maestro_phase2.pt"
   min_lr: 0.00001
 
 evaluation:

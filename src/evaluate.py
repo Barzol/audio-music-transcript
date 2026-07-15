@@ -1,5 +1,3 @@
-# Phase 2 MAESTRO — evaluation script
-# Evaluates all three heads: pitch (primary), onset, offset
 
 import torch
 from torch.utils.data import DataLoader
@@ -110,14 +108,12 @@ def evaluate():
     onset_preds  = (all_onset_probs  >= thresh_onset).astype(np.float32)
     offset_preds = (all_offset_probs >= thresh_offset).astype(np.float32)
 
-    # Plots (pitch head)
     print("\nGenerating plots...")
     plot_precision_recall_threshold(all_pitch_probs, all_pitch_labels)
     plot_prob_distribution(all_pitch_probs, all_pitch_labels)
     plot_confusion_per_note(all_pitch_labels, all_pitch_probs, threshold=threshold)
     generate_test_samples(track_info, plot_piano_roll, threshold)
 
-    # ── Metrics ────────────────────────────────────────────────────────────
     def compute_f1(labels, preds):
         p, r, f, _ = precision_recall_fscore_support(
             labels, preds, average='micro', zero_division=0)

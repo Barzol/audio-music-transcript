@@ -1,4 +1,3 @@
-# Text logger for training and evaluation — Phase 2 MAESTRO
 
 from datetime import datetime
 from pathlib import Path

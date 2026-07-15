@@ -1,6 +1,3 @@
-# Dataset Class for MAESTRO - Phase 2
-# Onset and offset are derived on-the-fly from the pitch roll in __getitem__
-# to avoid allocating 3x float32 arrays per track in __init__.
 
 import torch
 import torchaudio
@@ -49,8 +46,6 @@ class MaestroDataset(Dataset):
         NUM_NOTES  = MIDI_MAX - MIDI_MIN + 1
         frame_rate = sample_rate / HOP_LENGTH
 
-        # Only pre-compute pitch rolls (same memory footprint as Phase 1).
-        # Onset and offset are derived on-the-fly in __getitem__.
         print("Pre-computing pitch piano rolls...")
         self.piano_rolls = {}
 
@@ -74,7 +69,6 @@ class MaestroDataset(Dataset):
 
         print("Piano rolls ready.")
 
-        # --- FIX 1: indice (track_idx, chunk_idx) ---
         self.index = []
         self._orig_sr_cache = {}
 
@@ -89,7 +83,6 @@ class MaestroDataset(Dataset):
             for chunk_idx in range(n_chunks):
                 self.index.append((row_idx, chunk_idx))
 
-        # --- FIX 2: start_frame fisso per split non-train ---
         self.fixed_start_frames = {}
         if split != 'train':
             val_rng = random.Random(val_seed)
@@ -110,7 +103,6 @@ class MaestroDataset(Dataset):
         track_id = Path(row['audio_filename']).stem
         wav_path = self.data_dir / row['audio_filename']
 
-        # Audio
         info               = sf.info(wav_path)
         total_samples      = info.frames
         orig_sr            = info.samplerate
@@ -138,7 +130,6 @@ class MaestroDataset(Dataset):
         if orig_sr != self.sample_rate:
             waveform = torchaudio.transforms.Resample(orig_sr, self.sample_rate)(waveform)
 
-        # Pitch labels
         HOP_LENGTH = cfg['dataset']['hop_length']
         MIDI_MIN   = cfg['dataset']['midi_min']
         MIDI_MAX   = cfg['dataset']['midi_max']
@@ -157,28 +148,21 @@ class MaestroDataset(Dataset):
             pad        = np.zeros((num_frames - len(piano_roll), NUM_NOTES), dtype=np.float32)
             piano_roll = np.vstack([piano_roll, pad])
 
-        # Onset / Offset derived on-the-fly from pitch roll
-        # onset[t]  = 1  when pitch[t]=1 and pitch[t-1]=0  (note starts)
-        # offset[t] = 1  when pitch[t]=1 and pitch[t+1]=0  (note ends)
 
-        # Frame immediately before chunk start (for onset detection at t=0)
         if label_start > 0 and label_start <= len(full_roll):
             prev_frame = full_roll[label_start - 1:label_start]
         else:
             prev_frame = np.zeros((1, NUM_NOTES), dtype=np.float32)
 
-        # Frame immediately after chunk end (for offset detection at t=T-1)
         if label_end < len(full_roll):
             next_frame = full_roll[label_end:label_end + 1]
         else:
             next_frame = np.zeros((1, NUM_NOTES), dtype=np.float32)
 
-        # onset: current frame active, previous frame inactive
-        prev_extended = np.vstack([prev_frame, piano_roll[:-1]])   # (T, 84)
+        prev_extended = np.vstack([prev_frame, piano_roll[:-1]])
         onset_roll    = np.clip(piano_roll - prev_extended, 0, 1)
 
-        # offset: current frame active, next frame inactive
-        next_extended = np.vstack([piano_roll[1:], next_frame])    # (T, 84)
+        next_extended = np.vstack([piano_roll[1:], next_frame])
         offset_roll   = np.clip(piano_roll - next_extended, 0, 1)
 
         return {

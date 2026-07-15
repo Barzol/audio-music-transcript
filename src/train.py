@@ -1,5 +1,3 @@
-# Phase 2 MAESTRO — training loop
-# Multi-output: pitch + onset + offset with weighted BCE loss
 
 import torch
 import torch.nn as nn
@@ -26,7 +24,6 @@ def train():
     device = get_device()
     print(f"Training on: {device}")
 
-    # ── Datasets ───────────────────────────────────────────────────────────
     train_dataset = MaestroDataset(split='train')
     val_dataset   = MaestroDataset(split='validation')
 
@@ -37,13 +34,11 @@ def train():
                               batch_size=config['training']['batch_size'],
                               shuffle=False, num_workers=4, pin_memory=True)
 
-    # ── Model ──────────────────────────────────────────────────────────────
     model = PianoTranscriptArchitecture(
         input_features=config['model']['input_features'],
         dropout=config['model']['dropout']
     ).to(device)
 
-    # ── Loss ───────────────────────────────────────────────────────────────
     pw_pitch  = torch.full((84,), config['training']['pos_weight']).to(device)
     pw_onset  = torch.full((84,), config['training']['pos_weight_onset']).to(device)
     pw_offset = torch.full((84,), config['training']['pos_weight_offset']).to(device)
@@ -55,7 +50,6 @@ def train():
     lw_onset  = config['training']['loss_weight_onset']
     lw_offset = config['training']['loss_weight_offset']
 
-    # ── Optimizer & Scheduler ──────────────────────────────────────────────
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min',
@@ -67,7 +61,6 @@ def train():
     best_loss   = float('inf')
     train_losses, val_losses = [], []
 
-    # ── Training loop ──────────────────────────────────────────────────────
     for epoch in range(epochs):
         t0         = time_start()
         epoch_loss = 0.0
@@ -109,7 +102,6 @@ def train():
         avg_train = epoch_loss / len(train_loader)
         train_losses.append(avg_train)
 
-        # ── Validation ─────────────────────────────────────────────────────
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -144,7 +136,6 @@ def train():
         val_losses.append(avg_val)
         scheduler.step(avg_val)
 
-        # Early stopping on min LR
         current_lr = optimizer.param_groups[0]['lr']
         if current_lr < config['training']['min_lr']:
             print(f"LR {current_lr:.6f} below minimum. Early stopping.")
