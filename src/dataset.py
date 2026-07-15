@@ -130,12 +130,14 @@ class MusicNetPianoDataset(Dataset):
         onset_roll  = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
         offset_roll = np.zeros((num_frames, NUM_NOTES), dtype=np.float32)
 
-        start_cqt_frame = start_frame // HOP_LENGTH
+        resample_ratio = self.sample_rate / orig_sr
+
+        start_cqt_frame = int(start_frame * resample_ratio) // HOP_LENGTH
 
         for _, label_row in df_labels.iterrows():
 
-            note_start = int(label_row['start_time']) // HOP_LENGTH
-            note_end   = int(label_row['end_time'])   // HOP_LENGTH
+            note_start = int(int(label_row['start_time']) * resample_ratio) // HOP_LENGTH
+            note_end   = int(int(label_row['end_time'])   * resample_ratio) // HOP_LENGTH
 
             local_start = note_start - start_cqt_frame
             local_end   = note_end   - start_cqt_frame
