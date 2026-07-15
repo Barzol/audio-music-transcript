@@ -1,13 +1,3 @@
-# train.py  -  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla Phase 2 / Phase 3 Exp 10-13:
-#   - extract_features() al posto di extract_cqt() -> supporta CQT, STFT, Mel
-#   - get_input_features() ricava input_features dal tipo di feature scelto
-#   - aug_config passato al dataset (attivo solo se augmentation.enabled: true)
-#   - multi_output flag: se False, allena solo pitch (onset/offset ignorati)
-#
-# AGGIORNAMENTO (performance): num_workers/pin_memory/persistent_workers
-# sui DataLoader per parallelizzare il caricamento dati durante il training.
 
 import torch
 import torch.nn as nn
@@ -70,13 +60,11 @@ def train():
     print(f"Feature type: {feat_config['type'].upper()}")
     print(f"Multi-output: {multi_output}")
 
-    # Augmentation
     aug_config = config.get('augmentation', {})
     aug_config = aug_config if aug_config.get('enabled', False) else None
     if aug_config:
         print("Augmentation: ON")
 
-    # Dataset e DataLoader
     train_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -92,7 +80,7 @@ def train():
         split='val',
         chunk_duration=config['dataset']['chunk_duration'],
         sample_rate=sr,
-        aug_config=None,  # mai augmentare la validation
+        aug_config=None,
     )
 
     train_loader = DataLoader(
@@ -114,7 +102,6 @@ def train():
 
     print(f"Tracce - train: {len(train_dataset)} | val: {len(val_dataset)}")
 
-    # Modello (input_features derivato automaticamente dal tipo di feature)
     input_features = get_input_features(feat_config, sr=sr)
     print(f"input_features: {input_features}")
 
@@ -125,7 +112,6 @@ def train():
         lstm_layers=config['model']['lstm_layers'],
     ).to(device)
 
-    # Loss
     pw_pitch  = torch.ones(84).to(device) * config['training']['pos_weight_pitch']
     pw_onset  = torch.ones(84).to(device) * config['training']['pos_weight_onset']
     pw_offset = torch.ones(84).to(device) * config['training']['pos_weight_offset']
@@ -139,7 +125,6 @@ def train():
     w_offset = config['training']['loss_weight_offset'] if multi_output else 0.0
     grad_clip = config['training'].get('grad_clip', 1.0)
 
-    # Ottimizzatore e scheduler
     optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min',
@@ -155,7 +140,6 @@ def train():
     for epoch in range(epochs):
         t_epoch = time_start()
 
-        # Train
         model.train()
         epoch_loss = 0.0
         for batch in train_loader:
@@ -164,13 +148,13 @@ def train():
             onsets    = batch["onsets"].to(device)
             offsets   = batch["offsets"].to(device)
 
-            inputs = torch.stack(       #creo lo spettrogrammaq
+            inputs = torch.stack(
                 [extract_features(w, feat_config, sr=sr) for w in waveforms]
             ).to(device)
 
             if aug_config is not None:
                 augmented = []
-                for i in range(inputs.shape[0]):        #prendo uno spettrogramma
+                for i in range(inputs.shape[0]):
                     augmented.append(apply_spec_augment(inputs[i], aug_config))
                 inputs = torch.stack(augmented)
 
@@ -187,7 +171,6 @@ def train():
         avg_train_loss = epoch_loss / len(train_loader)
         train_losses.append(avg_train_loss)
 
-        # Validation
         model.eval()
         val_loss = 0.0
         with torch.no_grad():

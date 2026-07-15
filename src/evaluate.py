@@ -1,9 +1,3 @@
-# evaluate.py  -  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla Phase 2 / Phase 3 Exp 10-13:
-#   - extract_features() al posto di extract_cqt()
-#   - get_input_features() ricava input_features automaticamente
-#   - multi_output flag: se False, valuta solo pitch
 
 import torch
 import numpy as np
@@ -63,7 +57,6 @@ def evaluate():
     print(f"Feature type  : {feat_config['type'].upper()}")
     print(f"Multi-output  : {multi_output}")
 
-    # Dataset
     test_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -71,7 +64,6 @@ def evaluate():
     )
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
-    # Modello
     input_features = get_input_features(feat_config, sr=sr)
     model = PianoTranscriptArchitecture(
         input_features=input_features,
@@ -83,7 +75,6 @@ def evaluate():
     load_checkpoint(f"checkpoints/{config['training']['checkpoint_path']}", model, device=device)
     model.eval()
 
-    # Raccolta predizioni
     all_probs_pitch,  all_labels_pitch  = [], []
     all_probs_onset,  all_labels_onset  = [], []
     all_probs_offset, all_labels_offset = [], []
@@ -142,7 +133,6 @@ def evaluate():
     thr_onset  = config['evaluation']['threshold_onset']
     thr_offset = config['evaluation']['threshold_offset']
 
-    # Plot pitch
     print("\nGenerazione plot...")
     plot_precision_recall_threshold(all_probs_pitch, all_labels_pitch)
     plot_prob_distribution(all_probs_pitch, all_labels_pitch)
@@ -152,7 +142,6 @@ def evaluate():
         plot_piano_roll(info['labels'], info['probs'],
                         track_id=info['id'], threshold=thr_pitch)
 
-    # Metriche
     print('\n====== Risultati Phase 3 – CNN + BiLSTM ======')
     pitch_metrics = compute_metrics(all_probs_pitch, all_labels_pitch, thr_pitch, "PITCH")
 
@@ -164,7 +153,6 @@ def evaluate():
         onset_metrics  = compute_metrics(all_probs_onset,  all_labels_onset,  thr_onset,  "ONSET")
         offset_metrics = compute_metrics(all_probs_offset, all_labels_offset, thr_offset, "OFFSET")
     else:
-        # Placeholder quando multi_output=False
         onset_metrics  = (0, 0, 0, 0, 0, 0, 0, 0)
         offset_metrics = (0, 0, 0, 0, 0, 0, 0, 0)
 

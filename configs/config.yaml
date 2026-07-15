@@ -1,4 +1,3 @@
-# config.yaml  -  Phase 3: CNN + BiLSTM + Multi-Output
 
 dataset:
   csv_file: "data/solo_piano.csv"
@@ -6,31 +5,20 @@ dataset:
   chunk_duration: 7.0
   sample_rate: 22050
 
-# Rappresentazione tempo-frequenza
-# type: cqt | stft | mel
-# input_features del modello viene derivato automaticamente da questa sezione.
-#   cqt  -> cqt_bins        (default 84)
-#   stft -> n_bin in [stft_fmin, stft_fmax] Hz  (default ~193 con n_fft=1024)
-#   mel  -> mel_n_mels       (default 128)
 features:
   type: cqt
   hop_length: 512
 
-  # CQT - 84 bin logaritmici, A1-C8
   cqt_bins: 84
 
-  # STFT - range pianistico ritagliato (A1=55 Hz, C8~4200 Hz)
   stft_n_fft: 1024
   stft_fmin: 55.0
   stft_fmax: 4200.0
 
-  # Mel
   mel_n_fft: 2048
   mel_n_mels: 128
 
 model:
-  # multi_output: true  = allena pitch + onset + offset
-  #               false = solo pitch (loss_weight onset/offset ignorati)
   multi_output: false
   dropout: 0.3
   hidden_size: 256
@@ -59,17 +47,12 @@ evaluation:
   threshold_onset:  0.20
   threshold_offset: 0.20
 
-# Data Augmentation
-# enabled: false -> nessuna aug (default sicuro)
-# enabled: true  -> attiva sul train, mai su val/test
 augmentation:
   enabled: true
 
-  # Pitch shift intero: shifta waveform E piano roll
   pitch_shift_prob: 0.3
   pitch_shift_max_steps: 2
 
-  # Detuning (mutuam. esclusivo col pitch shift): shift < 0.5 semitoni, label invariate
   detuning_prob: 0.0
   detuning_max_steps: 0.5
 
@@ -85,15 +68,12 @@ augmentation:
   reverb_rt60_min: 0.3
   reverb_rt60_max: 1.5
 
-  # SpecAugment — applicato sullo spettrogramma, non sul waveform
   spec_augment_prob: 0.0
 
-  # Frequency masking
   freq_mask_prob: 0.0
-  freq_mask_max_bands: 2        # quante maschere applicare
-  freq_mask_max_width: 8        # larghezza massima in bin
+  freq_mask_max_bands: 2
+  freq_mask_max_width: 8
       
-  # Time masking  
   time_mask_prob: 0.0
   time_mask_max_bands: 2
-  time_mask_max_width: 20       # larghezza massima in frame
+  time_mask_max_width: 20

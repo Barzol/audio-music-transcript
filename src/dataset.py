@@ -1,12 +1,3 @@
-# dataset.py  –  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla Phase 2:
-#   - Integrata pipeline di data augmentation (pitch shift, detuning, gain,
-#     rumore gaussiano, reverb sintetico) — adattata dal codice esterno
-#   - _shift_piano_roll applicato anche a onset_roll e offset_roll
-#   - aug_config=None disattiva l'augmentation; ignorata su split != 'train'
-#   - Fix allineamento label: start_cqt_frame calcolato con fattore di scala
-#     sample_rate / ORIG_SR (necessario per resampling 44100 -> 22050)
 
 import torch
 import torchaudio
@@ -47,8 +38,6 @@ class MusicNetPianoDataset(Dataset):
         self.chunk_samples  = int(chunk_duration * sample_rate)
         self.aug_config     = aug_config if (split == 'train' and aug_config is not None) else None
         
-        # --- FIX 1 disattivato: indice con UN SOLO chunk per traccia ---
-        # (necessario comunque per FIX 2, che si appoggia a self.index / self._orig_sr_cache)
         self.index = []
         self._orig_sr_cache = {}
 
@@ -60,10 +49,9 @@ class MusicNetPianoDataset(Dataset):
                 orig_sr = f.samplerate
 
             self._orig_sr_cache[row_idx] = orig_sr
-            self.index.append((row_idx, 0))   # chunk_idx sempre 0: un solo chunk per traccia
+            self.index.append((row_idx, 0))
 
 
-        # --- FIX 2: start_frame fisso per split non-train ---
         self.fixed_start_frames = {}
         if split != 'train':
             val_rng = random.Random(val_seed)
@@ -87,7 +75,6 @@ class MusicNetPianoDataset(Dataset):
         wav_path   = self.data_dir / "wav"    / f"{track_id}.wav"
         label_path = self.data_dir / "labels" / f"labels{track_id}.csv"
 
-        # Audio
         with sf.SoundFile(wav_path) as f:
             total_samples = len(f)
             orig_sr       = f.samplerate
@@ -119,7 +106,6 @@ class MusicNetPianoDataset(Dataset):
             waveform = torchaudio.transforms.Resample(
                 orig_freq=orig_sr, new_freq=self.sample_rate)(waveform)
 
-        # Label
         ORIG_SR    = 44100
         HOP_LENGTH = 512
         MIDI_MIN   = 33
@@ -156,7 +142,6 @@ class MusicNetPianoDataset(Dataset):
             if 0 <= last_frame < num_frames:
                 offset_roll[last_frame, note_idx] = 1.0
 
-        # Augmentation
         pitch_shift_steps = 0
         if self.aug_config is not None:
             waveform, pitch_shift_steps = self._apply_augmentation(waveform)
@@ -196,7 +181,6 @@ class MusicNetPianoDataset(Dataset):
         config = self.aug_config
         pitch_shift_steps = 0
 
-        # 1. Pitch shift / detuning
         if random.random() < config.get('pitch_shift_prob', 0.0):
             max_steps = int(config.get('pitch_shift_max_steps', 2))
             possible  = [s for s in range(-max_steps, max_steps + 1) if s != 0]
@@ -209,16 +193,13 @@ class MusicNetPianoDataset(Dataset):
             waveform = torchaudio.functional.pitch_shift(
                 waveform, sample_rate=self.sample_rate, n_steps=detuning)
 
-        # 2. Gain
         if random.random() < config.get('gain_prob', 0.0):
             waveform = waveform * random.uniform(config.get('gain_min', 0.5), config.get('gain_max', 1.2))
 
-        # 3. Rumore gaussiano (SNR > 40 dB a noise_max=0.005)
         if random.random() < config.get('noise_prob', 0.0):
             nl = random.uniform(config.get('noise_min', 0.001), config.get('noise_max', 0.005))
             waveform = waveform + nl * torch.randn_like(waveform)
 
-        # 4. Reverb sintetico (IR esponenziale, RT60 in [0.3, 1.5] s)
         if random.random() < config.get('reverb_prob', 0.0):
             rt60   = random.uniform(config.get('reverb_rt60_min', 0.3), config.get('reverb_rt60_max', 1.5))
             ir_len = int(rt60 * 1.2 * self.sample_rate)

@@ -1,7 +1,3 @@
-# plots.py  –  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Fix rispetto alla Phase 2:
-#   - plot_loss_curve accetta ora val_losses opzionale e plotta entrambe le curve
 
 import os
 import numpy as np
@@ -33,7 +29,6 @@ def midi_to_name(midi_number):
     return f"{name}{octave}"
 
 
-# -------- LOSS CURVE --------
 
 def plot_loss_curve(train_losses, val_losses=None, save=True):
     """
@@ -77,7 +72,6 @@ def plot_loss_curve(train_losses, val_losses=None, save=True):
     plt.close()
 
 
-# -------- PRECISION / RECALL / F1 vs THRESHOLD --------
 
 def plot_precision_recall_threshold(all_probs, all_labels, save=True):
     thresholds = np.arange(0.05, 0.95, 0.05)
@@ -115,7 +109,6 @@ def plot_precision_recall_threshold(all_probs, all_labels, save=True):
     plt.close()
 
 
-# -------- PIANO ROLL --------
 
 def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     binary_preds = (preds >= threshold).astype(np.float32)
@@ -161,7 +154,6 @@ def plot_piano_roll(labels, preds, track_id="sample", threshold=0.3, save=True):
     plt.close()
 
 
-# -------- PER-NOTE CONFUSION --------
 
 def plot_confusion_per_note(all_labels, all_preds, threshold=0.3, save=True):
     binary_preds = (all_preds >= threshold).astype(np.float32)
@@ -193,7 +185,6 @@ def plot_confusion_per_note(all_labels, all_preds, threshold=0.3, save=True):
     plt.close()
 
 
-# -------- PROBABILITY DISTRIBUTION --------
 
 def plot_prob_distribution(all_probs, all_labels, save=True):
     probs_flat  = all_probs.flatten()

@@ -1,10 +1,3 @@
-# report.py  -  Phase 3: CNN + BiLSTM + Multi-Output
-#
-# Rispetto alla versione precedente:
-#   - Sezione [Features] nel log (type, hop_length, parametri specifici)
-#   - input_features derivato automaticamente via get_input_features()
-#   - multi_output e augmentation.enabled loggati
-#   - Filename include il tipo di feature: {timestamp}_{feat}_pwp{pw}_lr{lr}_hs{hs}.log
 
 from datetime import datetime
 from pathlib import Path
@@ -48,7 +41,6 @@ def start_run(config):
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
 
-    # Deriva input_features automaticamente
     try:
         input_features = get_input_features(feat_cfg, sr=sr)
     except Exception:
@@ -72,7 +64,6 @@ def start_run(config):
     aug_cfg     = config.get('augmentation', {})
     aug_enabled = aug_cfg.get('enabled', False)
 
-    # Riga riassuntiva parametri feature per il log
     if feat_type == 'cqt':
         feat_detail = f"cqt_bins={feat_cfg.get('cqt_bins', 84)}"
     elif feat_type == 'stft':
