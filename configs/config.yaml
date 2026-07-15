@@ -1,102 +1,61 @@
-# config.yaml  -  Phase 3: CNN + BiLSTM + Multi-Output
-
+# config.yaml
+# hyperparameters for MusicNet
 dataset:
   csv_file: "data/solo_piano.csv"
   data_dir: "data/raw"
-  chunk_duration: 7.0
-  sample_rate: 22050
-
-# Rappresentazione tempo-frequenza
-# type: cqt | stft | mel
-# input_features del modello viene derivato automaticamente da questa sezione.
-#   cqt  -> cqt_bins        (default 84)
-#   stft -> n_bin in [stft_fmin, stft_fmax] Hz  (default ~193 con n_fft=1024)
-#   mel  -> mel_n_mels       (default 128)
+  chunk_duration: 7.0       # seconds for audio chunk
+  sample_rate: 22050        # Hz
 features:
   type: cqt
   hop_length: 512
-
-  # CQT - 84 bin logaritmici, A1-C8
   cqt_bins: 84
-
-  # STFT - range pianistico ritagliato (A1=55 Hz, C8~4200 Hz)
   stft_n_fft: 1024
   stft_fmin: 55.0
   stft_fmax: 4200.0
-
-  # Mel
   mel_n_fft: 2048
   mel_n_mels: 128
-
 model:
-  # multi_output: true  = allena pitch + onset + offset
-  #               false = solo pitch (loss_weight onset/offset ignorati)
   multi_output: true
   dropout: 0.3
   hidden_size: 256
   lstm_layers: 1
-
 training:
   batch_size: 12
-  epochs: 25          # ridotto per tempo (paper/default: 120 con patience 12 - vedi nota)
   learning_rate: 0.001
-
-  pos_weight_pitch:  3.0
-  pos_weight_onset:  25.0
-  pos_weight_offset: 25.0
-
-  loss_weight_pitch:  1.0
-  loss_weight_onset:  0.3   # era 0.0 - stesso valore usato nel run di Fase 2 confrontato
-  loss_weight_offset: 0.3   # era 0.0
-
-  scheduler_patience: 4     # ridotto in proporzione a epochs=25 (era 12, proporzionale a 120)
-  scheduler_factor: 0.7
-  checkpoint_path: "weights_musicnet_best.pt"
+  epochs: 25
+  pos_weight_pitch: 3.0
+  pos_weight_onset: 15.0
+  pos_weight_offset: 15.0
+  loss_weight_pitch: 1.0
+  loss_weight_onset: 0.3
+  loss_weight_offset: 0.3
+  scheduler_patience: 12
+  scheduler_factor: 0.7     # LR multiplier when it is reduced
+  checkpoint_path: "best_model.pt"
   grad_clip: 1.0
-
 evaluation:
-  threshold_pitch:  0.35
-  threshold_onset:  0.20
-  threshold_offset: 0.20
-
-# Data Augmentation
-# enabled: false -> nessuna aug (default sicuro)
-# enabled: true  -> attiva sul train, mai su val/test
+  threshold_pitch: 0.35
+  threshold_onset: 0.2
+  threshold_offset: 0.2
 augmentation:
-  enabled: false   # disattivata per questo confronto: isola l'effetto della sola BiLSTM
-                   # rispetto al run di Fase 2 (stessa loss/pos_weight/soglie, unica
-                   # differenza = aggiunta di BiLSTM). Riattivala in un secondo run
-                   # separato per replicare l'ablation study del paper (Sezione 5.4).
-
-  # Pitch shift intero: shifta waveform E piano roll
+  enabled: false
   pitch_shift_prob: 0.3
   pitch_shift_max_steps: 2
-
-  # Detuning (mutuam. esclusivo col pitch shift): shift < 0.5 semitoni, label invariate
   detuning_prob: 0.0
   detuning_max_steps: 0.5
-
   gain_prob: 0.0
   gain_min: 0.5
   gain_max: 1.2
-
   noise_prob: 0.0
   noise_min: 0.001
   noise_max: 0.005
-
   reverb_prob: 0.0
   reverb_rt60_min: 0.3
   reverb_rt60_max: 1.5
-
-  # SpecAugment — applicato sullo spettrogramma, non sul waveform
   spec_augment_prob: 0.0
-
-  # Frequency masking
   freq_mask_prob: 0.0
-  freq_mask_max_bands: 2        # quante maschere applicare
-  freq_mask_max_width: 8        # larghezza massima in bin
-      
-  # Time masking  
+  freq_mask_max_bands: 2
+  freq_mask_max_width: 8
   time_mask_prob: 0.0
   time_mask_max_bands: 2
-  time_mask_max_width: 20       # larghezza massima in frame
+  time_mask_max_width: 20
