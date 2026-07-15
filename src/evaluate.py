@@ -1,4 +1,3 @@
-# Metrics
 
 import torch
 from torch.utils.data import DataLoader
@@ -34,7 +33,6 @@ def evaluate():
     device = get_device()
     print(f"Evaluation on: {device}")
  
-    # -------- Dataset and Dataloader ----------------------------------------
     test_dataset = MaestroDataset(
         csv_file       = config['dataset']['csv_file'],
         data_dir       = config['dataset']['data_dir'],
@@ -49,7 +47,6 @@ def evaluate():
         num_workers = 0
     )
  
-    # -------- Model ---------------------------------------------------------
     model = PianoTranscriptArchitecture(
         input_features = config['model']['input_features'],
         dropout        = config['model']['dropout']
@@ -60,17 +57,14 @@ def evaluate():
  
     all_probs  = []
     all_labels = []
-    track_info = []     # piano roll data for the first 3 tracks
+    track_info = []
  
-    # -------- Evalutaion loop -----------------
-    # disable the gradient computation for speed
     with torch.no_grad():
         for batch in test_loader:
             waveforms = batch["waveform"]
             labels    = batch["labels"].to(device)
             track_ids = batch["id"]
  
-            # extract CQT — MUST use the same hop_length as training
             cqt_list = [
                 extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length']).float()
                 for wave in waveforms
@@ -79,7 +73,6 @@ def evaluate():
  
             logits = model(inputs)
  
-            # temporal alignment
             min_frames = min(logits.size(1), labels.size(1))
             logits = logits[:, :min_frames, :]
             labels = labels[:, :min_frames, :]
@@ -92,7 +85,6 @@ def evaluate():
             all_labels.append(labels_np.reshape(-1, 84))
 
 
-            # collect up to 3 tracks for piano roll plots
             if len(track_info) < 3:
                 for i in range(len(track_ids)):
                     if len(track_info) < 3:
@@ -112,14 +104,12 @@ def evaluate():
     threshold = config['evaluation']['threshold']
     all_preds = (all_probs >= threshold).astype(np.float32)
     
-    # --- Plot generation ----------------------------------------------------
     print("\nGenerating plots...")
     plot_precision_recall_threshold(all_probs, all_labels)
     plot_prob_distribution(all_probs, all_labels)
     plot_confusion_per_note(all_labels, all_probs, threshold=threshold)
     generate_test_samples(track_info, plot_piano_roll, threshold)
 
-    # --- Metrics ------------------------------------------------------------
     precision, recall, f1, _ = precision_recall_fscore_support(
         all_labels, all_preds, average='micro', zero_division=0
     )

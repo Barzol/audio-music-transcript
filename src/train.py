@@ -1,6 +1,3 @@
-# this file contains the main training loop 
-# it loads the dataset, initializes the model, and trains it
-# for a number of epochs
 
 import torch
 import torch.nn as nn
@@ -17,22 +14,17 @@ from report import start_run, log_epoch, end_training
 
 def train():
 
-    # starts timer for training
     start_time = time_start()
 
-    # load hyperparameters from the config file
     config = load_config()
 
-    # starts log file
     start_run(config)
 
-    # set random seed
     set_seed(42)
 
     device = get_device()
     print(f"Training on : {device}")
 
-    # -------- Dataset and Dataloader --------
     train_dataset = MaestroDataset(
         csv_file       = config['dataset']['csv_file'],
         data_dir       = config['dataset']['data_dir'],
@@ -67,32 +59,21 @@ def train():
         persistent_workers = True
     )
 
-    # -------- Model -------------------------
-    # CRNN model initialize
     model = PianoTranscriptArchitecture(
         input_features = config['model']['input_features'],
         dropout        = config['model']['dropout']
     ).to(device)
  
 
-    # -------- Loss --------------------------
-    # Loss : Binary Cross Entropy for multi-label classification
-    # BCEWithLogitsLoss because the final sigmoid will be applied 
-    # in post processing
 
-    # this term tells the loss to penalize missing note 
     pos_weight = torch.full((84,), config['training']['pos_weight']).to(device)
     criterion  = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    # -------- Optimizer ---------------------
-    # optimizer Adam with learning rate 0.001
     optimizer = optim.Adam(
         model.parameters(),
         lr = config['training']['learning_rate']
     )
 
-    # reduces LR by 0.5 if loss doesnt' primove for 5 epochs
-    # this helps escape plateaus 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode      = 'min',
@@ -105,12 +86,10 @@ def train():
     train_losses = []
     val_losses   = []
 
-    # -------- Training loop -----------------
     for epoch in range(epochs):
         start_time_epoch = time_start();
         epoch_loss = 0.0
         
-        # --- Training ---
         model.train()
  
         for batch in train_loader:
@@ -118,7 +97,6 @@ def train():
             waveforms = batch["waveform"]
             labels    = batch["labels"].to(device)
  
-            # CQT extraction for the batch
             cqt_list = []
             for wave in waveforms:
                 c_feat = extract_cqt(wave.squeeze(), hop_length=config['dataset']['hop_length'])
@@ -130,11 +108,8 @@ def train():
  
             optimizer.zero_grad()
 
-            # forward pass : active notes per frames
-            # output : (batch, time_frames, 84)
             outputs = model(inputs)
 
-            # Align the temporal dimensions
             min_frames = min(outputs.size(1), labels.size(1))
             outputs    = outputs[:, :min_frames, :]
             labels     = labels[:, :min_frames, :]
@@ -142,7 +117,6 @@ def train():
             loss = criterion(outputs, labels)
             loss.backward()
             
-            # gradient clipping : avoid exploding gradients in LSTMs
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
  
             optimizer.step()
@@ -152,7 +126,6 @@ def train():
         train_losses.append(avg_train_loss)
  
         
-        # --- Validation ---
         model.eval()
         val_loss = 0.0
         
@@ -183,14 +156,12 @@ def train():
  
         scheduler.step(avg_val_loss)
         
-        # Early stopping on minimum LR
         min_lr     = config['training']['min_lr']
         current_lr = optimizer.param_groups[0]['lr']
         if current_lr < min_lr:
             print(f"LR {current_lr:.6f} below minimum {min_lr:.6f}. Early stopping.")
             break
  
-        # Save best checkpoint
         if avg_val_loss < best_loss:
             best_loss = avg_val_loss
             save_checkpoint({
@@ -205,10 +176,8 @@ def train():
         current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{epochs} — Train: {avg_train_loss:.4f}  Val: {avg_val_loss:.4f}  LR: {current_lr:.6f}")
 
-        # log of epochs
         log_epoch(epoch, avg_train_loss, avg_val_loss, current_lr, duration)
  
-    # end of training
     print_time(time_stop(start_time))
     end_training()
  
@@ -218,7 +187,6 @@ def train():
  
     plot_loss_curve(train_losses, val_losses)
  
-    # save final weights
     save_checkpoint({
         'state_dict': model.state_dict(),
         'optimizer':  optimizer.state_dict()

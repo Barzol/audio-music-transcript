@@ -1,12 +1,4 @@
-# This file defines the model class PianoTranscriptArchitecture
-# defines the nn architecture
-# the model receives a CQT spectogram and outputs per-frame
-# note probabilities.
 
-# Architecture :
-#   CNN     : extracts frequency patterns from CQT
-#   BiLSTM  : captures note onsets and offsets
-#   Linear  : maps to 84 probabilities ( note probabilities )
 
 import torch
 import torch.nn as nn
@@ -17,50 +9,43 @@ class PianoTranscriptArchitecture(nn.Module):
     def __init__(self, input_features=84, dropout=0.4):
         super().__init__()
  
-        # Block 1 : 1 → 32 filters, MaxPool halves frequency axis
         self.block1 = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(1, 1)),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(1, 2))     # (B, 32, T, 42)
+            nn.MaxPool2d(kernel_size=(1, 2))
         )
  
-        # Block 2 : 32 → 64 filters, MaxPool halves again
         self.block2 = nn.Sequential(
             nn.Conv2d(32, 64, kernel_size=(3, 3), padding=(1, 1)),
             nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.MaxPool2d(kernel_size=(1, 2))     # (B, 64, T, 21)
+            nn.MaxPool2d(kernel_size=(1, 2))
         )
  
-        # After two MaxPool(1,2) : freq_bins = input_features // 4 = 21
-        # Flatten channels × freq_bins → 64 × 21 = 1344
         cnn_out_dim = 64 * (input_features // 4)
  
-        # Per-frame linear head
         self.head = nn.Sequential(
             nn.Linear(cnn_out_dim, 256),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(256, input_features)       # → 84 logits
+            nn.Linear(256, input_features)
         )
 
     def forward(self, x):
-        # x : (B, T, 84)
-        x = x.unsqueeze(1)                       # (B, 1, T, 84)
+        x = x.unsqueeze(1)
  
-        x = self.block1(x)                       # (B, 32, T, 42)
-        x = self.block2(x)                       # (B, 64, T, 21)
+        x = self.block1(x)
+        x = self.block2(x)
  
         B, C, T, F = x.size()
-        x = x.permute(0, 2, 1, 3).contiguous()  # (B, T, 64, 21)
-        x = x.view(B, T, C * F)                 # (B, T, 1344)
+        x = x.permute(0, 2, 1, 3).contiguous()
+        x = x.view(B, T, C * F)
  
-        return self.head(x)                      # (B, T, 84)
+        return self.head(x)
 
 
-# --- TEST DEL MODELLO ---
 if __name__ == "__main__":
     model = PianoTranscriptArchitecture(
         input_features=84,

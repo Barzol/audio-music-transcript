@@ -1,9 +1,3 @@
-# This file defines the Dataset Class
-# 3 methods :
-#   - __init__ : loads metadata and stores configuration
-#   - __len__ : returns the number of chunks across all tracks in the split
-#   - __getitem__ : loads a (deterministic if not train) audio chunk
-#                    and its aligned labels
 
 import torch
 import torchaudio
@@ -41,16 +35,12 @@ class MaestroDataset(Dataset):
                  val_seed=42,
                  ):
         
-        # csv from absolute path in config
         df = pd.read_csv(csv_file)
         
-        # filter split
         self.data = df[df['split'] == split].reset_index(drop=True)
 
-        # data_dir absoulte path
         self.data_dir = Path(data_dir)
         
-        # parameters
         self.split          = split
         self.sample_rate    = sample_rate
         self.chunk_duration = chunk_duration
@@ -58,7 +48,6 @@ class MaestroDataset(Dataset):
 
         print(f"Dataset {split} loaded: {len(self.data)} tracks.")
         
-        # costanti — aggiungile qui
         HOP_LENGTH = self.config['dataset']['hop_length']
         MIDI_MIN   = self.config['dataset']['midi_min']
         MIDI_MAX   = self.config['dataset']['midi_max']
@@ -86,7 +75,6 @@ class MaestroDataset(Dataset):
  
         print("Piano rolls ready.")
 
-        # --- FIX 1: indice (track_idx, chunk_idx) ---
         self.index = []
         self._orig_sr_cache = {}
 
@@ -101,7 +89,6 @@ class MaestroDataset(Dataset):
             for chunk_idx in range(n_chunks):
                 self.index.append((row_idx, chunk_idx))
 
-        # --- FIX 2: start_frame fisso per split non-train ---
         self.fixed_start_frames = {}
         if split != 'train':
             val_rng = random.Random(val_seed)
@@ -112,11 +99,9 @@ class MaestroDataset(Dataset):
                 jitter = val_rng.randint(0, max(0, orig_chunk_samples // 4))
                 self.fixed_start_frames[(row_idx, chunk_idx)] = base + jitter
 
-# ---------------------------------------------------------------------------
     def __len__(self):
         return len(self.index)
 
-# ---------------------------------------------------------------------------
 
     def __getitem__(self, idx):
         
@@ -129,16 +114,13 @@ class MaestroDataset(Dataset):
             'id'        : track identifier
         '''
 
-        # retrieve metadata
         row_idx, chunk_idx = self.index[idx]
         row = self.data.iloc[row_idx]
 
         track_id = Path(row['audio_filename']).stem
 
-        # build full paths to the audio file
         wav_path = self.data_dir / row['audio_filename']
 
-        # ---------- Audio loading ----------
         info = sf.info(wav_path)
         total_samples = info.frames
         orig_sr = info.samplerate
@@ -146,20 +128,16 @@ class MaestroDataset(Dataset):
         orig_chunk_samples = int(self.chunk_samples * orig_sr / self.sample_rate)
 
         if self.split == 'train':
-            # random on-the-fly: fine for train, adds diversity across epochs
             if total_samples > orig_chunk_samples:
                 start_frame = random.randint(0, total_samples - orig_chunk_samples)
             else:
                 start_frame = 0
         else:
-            # deterministic: same chunk every time (fix 2)
             start_frame = min(
                 self.fixed_start_frames[(row_idx, chunk_idx)],
                 max(0, total_samples - orig_chunk_samples)
             )
 
-        # load only the chunk
-        # 'with' calls automatically two methods
         with sf.SoundFile(wav_path) as f:
             f.seek(start_frame)
             chunk_np = f.read(
@@ -168,26 +146,20 @@ class MaestroDataset(Dataset):
                 always_2d=True
                 )
             
-        # padding, if the file is shorter we have to pad with zeros
-        # to mantain the correct length
         if chunk_np.shape[0] < orig_chunk_samples:
             pad_length = orig_chunk_samples - chunk_np.shape[0]
             chunk_np   = np.pad(chunk_np, ((0, pad_length), (0, 0)), mode='constant')
             
-        # convert to torch tensor and transpose to (channels, samples)
         waveform = torch.tensor(chunk_np.T, dtype=torch.float32) 
 
-        # mono conversion
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)
  
-        # resample if needed
         if orig_sr != self.sample_rate:
             resampler = torchaudio.transforms.Resample(orig_sr, self.sample_rate)
             waveform  = resampler(waveform)
 
 
-        # ---------- Labels ----------
         HOP_LENGTH = self.config['dataset']['hop_length']
         MIDI_MIN   = self.config['dataset']['midi_min']
         MIDI_MAX   = self.config['dataset']['midi_max']
@@ -195,7 +167,7 @@ class MaestroDataset(Dataset):
  
         frame_rate     = self.sample_rate / HOP_LENGTH
         num_frames     = 1 + math.floor(self.chunk_samples / HOP_LENGTH)
-        start_time_sec = start_frame / orig_sr          # correct time alignment
+        start_time_sec = start_frame / orig_sr
         label_start    = int(start_time_sec * frame_rate)
         label_end      = label_start + num_frames
  
@@ -213,11 +185,7 @@ class MaestroDataset(Dataset):
         }
 
 
-# --- TEST ----
 if __name__ == "__main__":
-    #
-    # test dataset on a block
-    # insert here
 
     dataset = MaestroDataset(split="train")
     print(f"Chunk di training: {len(dataset)}")

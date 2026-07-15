@@ -1,29 +1,15 @@
-# This file creates a simple text logger for training and evaluation
-# Each experiment is saved as a .log file in the 'logs/' directory
-#
-# run_id is saved between --train and --evaluate so they
-# can be called separately but write to the same log file.
-#
-# functions :
-#   start_run(config)           : creates the log file, writes hyperparameters
-#   log_epoch(epoch, loss, lr)  : appends one line per epoch
-#   end_training()              : writes a separator at the end of training
-#   log_metrics(...)            : appends evaluation metrics to the log file
  
 import json
 from datetime import datetime
 from pathlib import Path
  
-# --- Paths ---
 ROOT_DIR     = Path(__file__).parent.parent
 LOGS_DIR     = ROOT_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
  
-# active log file path between --train and --evaluate
 ACTIVE_LOG_FILE = ROOT_DIR / "checkpoints" / "active_log.txt"
  
  
-# --- utils ---
  
 '''
     Returns the path of the active log
@@ -47,7 +33,6 @@ def _write(log_path, text):
     print(text)
  
  
-# --- Run logs ---
  
 '''
     Creates a log file for the run
@@ -59,18 +44,15 @@ def _write(log_path, text):
 '''
 def start_run(config):
  
-    # Build a descriptive filename from the most important hyperparameters
     timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
     pos_weight = config['training'].get('pos_weight', 'N/A')
     lr         = config['training']['learning_rate']
-    # Phase 1 has no LSTM — use 'cnn' as suffix; Phase 3 uses hidden_size
     hs         = config['model'].get('hidden_size', 0)
     suffix     = f"hs{hs}" if hs > 0 else "cnn"
     filename   = f"{timestamp}_pw{pos_weight}_lr{lr}_{suffix}.log"
  
     log_path = LOGS_DIR / filename
  
-    # Persist the log path so evaluate.py can find it
     ACTIVE_LOG_FILE.parent.mkdir(exist_ok=True)
     ACTIVE_LOG_FILE.write_text(str(log_path))
  
@@ -147,7 +129,6 @@ def end_training():
     print("Training phase logged.")
  
  
-# --- Evaluation ---
  
 '''
     Appends evaluation metrics to the active log, then closes the run
@@ -181,7 +162,6 @@ def log_metrics(accuracy, precision, recall, f1,
     with open(log_path, 'a') as f:
         f.write("\n".join(lines) + "\n")
  
-    # Clean up the active log pointer — next --train will create a fresh file
     if ACTIVE_LOG_FILE.exists():
         ACTIVE_LOG_FILE.unlink()
  
