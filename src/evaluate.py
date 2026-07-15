@@ -1,11 +1,3 @@
-# evaluate.py  –  Fase 1: valutazione del Baseline CNN sul test set
-#
-# Uso:
-#   python evaluate.py
-#
-# Carica il checkpoint salvato da train.py e calcola
-# Precision, Recall e F1-Score frame-level sul test set.
-# Genera i plot in plots/.
 
 import torch
 import numpy as np
@@ -27,13 +19,11 @@ from report import log_metrics
 
 def evaluate():
 
-    # ── Config ───────────────────────────────────────────────────────────────
     config = load_config("configs/config.yaml")
 
     device = get_device()
     print(f"Evaluation on: {device}")
 
-    # ── Dataset e DataLoader ─────────────────────────────────────────────────
     test_dataset = MusicNetPianoDataset(
         csv_file=config['dataset']['csv_file'],
         data_dir=config['dataset']['data_dir'],
@@ -42,7 +32,6 @@ def evaluate():
     print(f"Tracce di test trovate: {len(test_dataset)}")
     test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
 
-    # ── Modello ──────────────────────────────────────────────────────────────
     model = PianoTranscriptArchitecture(
         input_features=config['model']['input_features'],
         dropout=config['model']['dropout'],
@@ -51,10 +40,9 @@ def evaluate():
     load_checkpoint("checkpoints/best_model.pt", model, device=device)
     model.eval()
 
-    # ── Raccolta predizioni ───────────────────────────────────────────────────
     all_probs  = []
     all_labels = []
-    track_info = []   # usato per i piano roll
+    track_info = []
 
     with torch.no_grad():
         for batch in test_loader:
@@ -62,13 +50,11 @@ def evaluate():
             labels    = batch["labels"].to(device)
             track_ids = batch["id"]
 
-            # CQT identico al training
             cqt_list = [extract_cqt(wave) for wave in waveforms]
             inputs   = torch.stack(cqt_list).to(device)
 
             logits = model(inputs)
 
-            # Allineamento temporale
             min_frames = min(logits.size(1), labels.size(1))
             logits = logits[:, :min_frames, :]
             labels = labels[:, :min_frames, :]
@@ -98,7 +84,6 @@ def evaluate():
     threshold = config['evaluation']['threshold']
     all_preds = (all_probs >= threshold).astype(np.float32)
 
-    # ── Plot ──────────────────────────────────────────────────────────────────
     print("\nGenerazione plot...")
     plot_precision_recall_threshold(all_probs, all_labels)
     plot_prob_distribution(all_probs, all_labels)
@@ -112,7 +97,6 @@ def evaluate():
             threshold=threshold,
         )
 
-    # ── Metriche ──────────────────────────────────────────────────────────────
     precision, recall, f1, _ = precision_recall_fscore_support(
         all_labels, all_preds, average='micro', zero_division=0
     )

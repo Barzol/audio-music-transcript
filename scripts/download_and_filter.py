@@ -5,9 +5,8 @@ import os
 from pathlib import Path
 from collections import defaultdict
 
-# ── Parametri dello split ─────────────────────────────────────────────────────
-TEST_RATIO = 0.15   # 15% test, 85% train
-SEED       = 42     # seed per riproducibilità
+TEST_RATIO = 0.15
+SEED       = 42
 
 
 def stratified_split(df, test_ratio, seed):
@@ -20,7 +19,6 @@ def stratified_split(df, test_ratio, seed):
     """
     random.seed(seed)
 
-    # Estrai compositore dall'ultima occorrenza di 'musicnet_midis' nel path
     def get_composer(midi_path):
         parts = Path(midi_path).parts
         idx = [i for i, p in enumerate(parts) if p == "musicnet_midis"]
@@ -35,7 +33,7 @@ def stratified_split(df, test_ratio, seed):
         ids = group.index.tolist()
         random.shuffle(ids)
 
-        n_test = max(1, round(len(ids) * test_ratio))   # almeno 1 per compositore
+        n_test = max(1, round(len(ids) * test_ratio))
         test_ids  = set(ids[:n_test])
         train_ids = set(ids[n_test:])
 
@@ -54,7 +52,6 @@ def stratified_split(df, test_ratio, seed):
 def main():
     print("Download MusicNet da Kaggle...")
 
-    # ── Download ──────────────────────────────────────────────────────────────
     path = kagglehub.dataset_download("imsparsh/musicnet-dataset")
     print(f"Dataset scaricato in: {path}")
 
@@ -64,7 +61,6 @@ def main():
 
     meta = pd.read_csv(meta_path)
 
-    # ── Costruzione lista tracce ──────────────────────────────────────────────
     print("Ricerca file WAV, label e MIDI...")
     records = []
 
@@ -72,14 +68,12 @@ def main():
         track_id = str(row["id"])
         ensemble = row["ensemble"]
 
-        # Determina la cartella sorgente (train o test di MusicNet)
-        # NB: questo split originale verrà sovrascritto dopo
         if   (root / "train_data" / f"{track_id}.wav").exists():
             src_split = "train"
         elif (root / "test_data"  / f"{track_id}.wav").exists():
             src_split = "test"
         else:
-            continue    # file non trovato, salta
+            continue
 
         midi_files = list(midi_root.rglob(f"{track_id}*.mid*"))
         if not midi_files:
@@ -88,7 +82,7 @@ def main():
 
         records.append({
             "id":         track_id,
-            "split":      src_split,            # verrà sovrascritto
+            "split":      src_split,
             "ensemble":   ensemble,
             "wav_path":   str(root / f"{src_split}_data"   / f"{track_id}.wav"),
             "label_path": str(root / f"{src_split}_labels" / f"{track_id}.csv"),
@@ -97,11 +91,9 @@ def main():
 
     df = pd.DataFrame(records)
 
-    # ── Filtra Solo Piano ─────────────────────────────────────────────────────
     solo_piano = df[df["ensemble"] == "Solo Piano"].copy().reset_index(drop=True)
     print(f"\nTracce Solo Piano trovate: {len(solo_piano)}")
 
-    # ── Split stratificato per compositore ────────────────────────────────────
     print(f"\nSplit stratificato (test_ratio={TEST_RATIO}, seed={SEED}):")
     solo_piano = stratified_split(solo_piano, TEST_RATIO, SEED)
 
@@ -110,7 +102,6 @@ def main():
     print(f"\n  → TOTALE: {n_train} train, {n_test} test "
           f"({n_test/(n_train+n_test)*100:.1f}% test)")
 
-    # ── Salvataggio CSV ───────────────────────────────────────────────────────
     os.makedirs("data", exist_ok=True)
     out_path = "data/solo_piano.csv"
     solo_piano.to_csv(out_path, index=False)
